@@ -24,7 +24,7 @@ if (do_runs) {
                            progress=TRUE),
                       as.list(pars))
          resList[[i]] <- try(do.call(run_sim,argList))
-         save("resList",file=fn)
+         save("lhs_df","resList",file=fn)
      }
  }
 } else {
