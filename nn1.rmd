@@ -1,0 +1,111 @@
+---
+author: "Ben Bolker and Marta Wayne"
+title: "Nearly neutral (?) host-parasite dynamics"
+date: "`r format(Sys.time(), '%H:%M %d %B %Y')`"
+---
+
+A first pass at a definition and implementation of a "nearly neutral" (maybe - this is the term we started with but it may not actually be applicable) model of the evolution of a parasite community within a single host population.
+
+Start with a host population of size $N$ and subpopulations $\{n_i\}$ of different pathogen strains (the length of the vector will be dynamic ...).  Each strain has an associated $R_{0,i}$ (the vector *could* be defined in sorted order - I don't know if this would make either the mathematical description or the computational organization more convenient). For practical purposes, we will use the per-contact probability $\beta$ instead, where $R_0 = \beta N/\gamma$ and $\gamma$ is the recovery rate (i.e., probably per time step), set equal for all parasites for the time being (although later we can imagine allowing this to mutate as well). Consider a discrete-time SIS model with mutation in the transmission probability.
+
+1. The first update step is infection: uninfected individuals ($S=N-\sum n_i$) *remain uninfected* with probability
+$$
+\prod_i (1-\beta_i)^{n_i}
+$$
+(i.e., a Reed-Frost update). Those individuals that do become infected are subdivided with a per-strain probability of *approximately*
+$$
+p_i = \frac{n_i R_{0,i}}{\sum_j n_j R_{0,j}} \qquad ,
+$$
+i.e. a weighted fraction of prevalence. (**Side question #1**: what is the proper probability of being infected first by an individual of type $i$ in this case? ...) If we use the approximation, we could make it stochastic and discrete by drawing a multinomial probability ... or, even more approximately, draw Poisson deviates with mean ($S/N n_i R_{0,i}$) for each infection type ...
+2. In the second update step, all *previously* infected individuals recover with probability $\gamma$ (might need to think carefully about the consequences of this particular update rule [infect first, then recover] to see if there are adjustments that need to be made to the relationship between $\beta$, $\gamma$, and $R_0$ ....).
+3. Consider mutation of new infecteds. (Steps 2 and 3 can occur in arbitrary order.) Mutation occurs with *per capita* probability $\mu$ (i.e., per new infection). If mutation occurs we pick a new $R_0$ (equivalently, a new $\beta$) with one of the following rules:
+
+- *shift*: $\log R_0 \to \log R_0 + \epsilon$
+- *fixed/"house of cards"*: $\log R_0 \to \epsilon$
+- *Ornstein-Uhlenbeck*: $\log R_0 \to \log R_0 + \alpha (\widehat{\log R_0} - \log R_0) + \epsilon$
+
+$\epsilon$ is drawn from a Normal distribution with mean $a$ ($<0$) and standard deviation $b$. (We may have to be careful about scaling: if we have discrete time scales then $\beta$ may have to move/be defined on the log-hazard or logit scale instead.)
+4. Initial conditions: somewhat arbitrary, but possibly a single strain with $R_{0,1}=2$ and $n_1=0.5$ (which is the equilibrium condition for a single strain).
+
+**Side question #2: what is the effective population size for this type of infection system?** Logically, it seems that $N_e$ should be 1 when $I=1$ (because only one individual is contributing to the population) as well as when $I=N-1$ (because there is only one susceptible left), and presumably maximum ($=N/2???$) when $I=N/2$ ...
+
+## Preliminary results
+
+```{r pkgs,echo=FALSE,message=FALSE}
+library(ggplot2); theme_set(theme_bw())
+library(tidyr)
+library(plyr)
+library(dplyr)
+library(knitr)
+opts_chunk$set(echo=FALSE)
+```
+
+```{r melt}
+L <- load("nn_runs_1.rda")
+all_runs <- lme4:::namedList(res_1000,res_100,res_33)
+gamma <- 1/5
+all_m <- ldply(all_runs,identity) %>%
+    mutate(
+        N=as.numeric(gsub("res_","",.id)),
+        Iprop=I/N,
+        time=time/1000,
+        beta=plogis(mean_lbeta)) %>%
+    gather(key=var,value=val,-c(time,.id,N)) %>%
+    filter(var %in% c("Iprop","beta","mean_lbeta","sd_lbeta"))
+```
+
+
+```{r plot1,fig.width=8,fig.height=8}
+g0 <- ggplot(all_m,aes(time,val,colour=factor(N)))+
+    geom_line()+facet_wrap(~var,scale="free",nrow=2)+
+    scale_colour_brewer(palette="Set1",name="pop size") +
+    labs(y="",x="time (x1000 steps)")
+g0 %+% subset(all_m,time>100)
+```
+
+**Notes**
+
+- parameters:
+    - $\gamma$ (recovery period) = 1/5
+	- $\mu$ (per-infection mutation prob) = 0.01
+	- "shift"-type mutation with a logit-Normal shift probability (see below) with mean=-1, standard deviation=0.5
+	- 1 million time steps, reported every 1000 steps
+	- initial $R_0$=2 (plot below omits first 100,000 steps, so this isn't visible), except for $N=33$ (boosted to 4 to prevent extinction)
+- I'm dealing with $\beta$ (*per capita* infection probabilities) on the logit scale, which makes it much easier to allow mutation on an unconstrained scale (i.e. not worrying about probabilities <0 or >1). Back-transforming summaries of the logit-beta distribution, e.g. going from mean(logit-beta) to mean(beta), is therefore not entirely accurate; we could deal with this in a variety of ways (computing and storing desired summaries on the appropriate scale during the simulation run, or using the delta method). This also means the amount of mutation (on the $\beta$/probability scale) varies according to the base $\beta$; as $\beta$ approaches 0 or 1, the scope for mutation is smaller.
+- first panel shows $\beta$; $\beta$ values this close to 1 give rise to *extremely* high $R_0$ values (since $R_0 = \beta N/\gamma$, $1/\gamma=5$ in this example). "Unrealistic" in some sense ... would the results be different if we used an SIRS model (and left individuals in a Resistant state for some period of time)? In any case, it does make sense that $\beta$ is smaller for $N=100$ than $N=1000$ (more drift).
+- Not sure why infection proportion is so similar for different $\beta$; would expect that infection proportion would go down? Also, would expect much higher $I^*/N$ ($*$ denotes equilibrium): expected is $1-1/R_0$ ... Is this another effect of variability?  (**New hypothesis**: since we're in discrete time, even if we had 100% infection, a fraction $1/\gamma$ of individuals would be recovering at each time step, so we'd have about a fraction $1-1/\gamma$ infected - $\approx 0.8$ as observed in this case - but why is the infected proportion slightly *higher* than 80%? Is there something funky about the sequence of events/census time, are mutations being counted differently, etc.?)
+- standard deviation of logistic-beta is higher in larger population (not just sure if that's what I expected but ...). Not sure if this is a reliable summary (i.e., how is distribution skewed etc.?) Could save more summary statistics about the shape of the distribution, or save a snapshot of the final distribution - saving the entire distribution for every time step could be pretty unwieldy.
+- Would be nice to speed up the code (takes about 2-4 minutes per run; increases with pop size, but sublinearly)
+
+These are the distributions of $\beta$ and $\log_{10}(R_0)$ (the latter
+certainly needs to be taken with a grain of salt ...)
+```{r bdist,fig.width=8,fig.height=4}
+avg_vals <- all_m %>% filter(time>750) %>%
+    group_by(N,var) %>%
+    filter(var %in% c("mean_lbeta","sd_lbeta")) %>%
+    summarise(val=mean(val)) %>%
+    spread(var,val)
+## would be more elegant to construct the logistic-Normal density
+## directly ...
+gamma <- 1/5
+set.seed(101)
+randvals <- ddply(avg_vals,"N",
+      function(x) with(x,data.frame(beta=plogis(rnorm(1000,mean_lbeta,sd_lbeta))))) %>%
+    mutate(`log[10](R[0])`=log10(beta*N/gamma)) %>%
+    gather(var,val,-N)
+ggplot(randvals,aes(x=val,fill=factor(N)))+
+    facet_wrap(~var,scale="free",labeller=label_parsed)+
+    geom_density(alpha=0.5)+
+    scale_colour_brewer(palette="Set1",name="pop size")
+```
+
+## To do
+
+- SIRS?
+- allow $\gamma$ to mutate?
+- keep track of extincts?
+- keep track of lineage age?
+- output final distribution?
+- play with parameter values ($\mu$, $a$, $b$, $N$, $\gamma$) (LHS)
+- change the mutational model (e.g. Ornstein-Uhlenbeck, $0 \le \alpha \le 1$)
+- make the code faster
