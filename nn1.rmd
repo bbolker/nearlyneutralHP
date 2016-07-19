@@ -184,9 +184,11 @@ print(gList[[3]],spacingProportion=0)
 
 ## To do
 
-- SIRS?
+- figure out bimodality in results for equilibrium transmission!
+    - seems to have something to do with standard deviation of mutation; low values
 - allow $\gamma$ to mutate?
 - keep track of extincts?
+- SIRS?
 - keep track of lineage age?
 - output final distribution?
 - play with parameter values ($\mu$, $a$, $b$, $N$, $\gamma$) (LHS)
