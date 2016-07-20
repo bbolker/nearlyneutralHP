@@ -5,12 +5,13 @@ if (!file.exists(fn)) {
     set.seed(101)
     Nvals <- c(1000,100,33)
     resG <- lapply(Nvals,
-                   run_sim,
-                   nt=1e6,rptfreq=1000,
-                   mut_var="gamma",
-                   seed=101,
-                   progress=TRUE,
-                   R0_init=4)
+                   function(n) {
+        run_sim(N=n,nt=1e6,rptfreq=1000,
+                mut_var="gamma",
+                seed=101,
+                progress=TRUE,
+                R0_init=4)
+        })
     save("resG",file=fn)
 }
 
