@@ -9,3 +9,4 @@ not very organized at the moment
 - `nn2_sims.R`: basic sims with mutating beta (N=1000,100,33) (output in `nn_runs_1.rda` (!))
 - `nn3_sims.R`: Latin hypercube sims (`nn_runs_3.rda`)
 - `nn4_sims.R`: like `nn2`, but with mutating gamma (`nn_runs_4.rda`)
+- `nn5_sims.R`: like `nn3`, but with mutating gamma (`nn_runs_5.rda`)
