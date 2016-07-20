@@ -15,7 +15,7 @@ run_sim <- function(R0_init=2,  ## >1
                     mut_mean=-1,## <0 (for sensibility)
                     mut_sd=0.5, ## >0
                     mut_var="beta",
-                    mut_link=make.link("logit"),
+                    mut_link=NULL,
                     nt=100000,
                     rptfreq=100, ## divides nt?
                     seed=NULL,
@@ -34,12 +34,16 @@ run_sim <- function(R0_init=2,  ## >1
     S <- N-sum(Ivec)
 
     ## R0 = beta*N/gamma
-    beta0 <- R0_init*gamma_init/N
+    beta0 <- R0_init*gamma/N
 
     if (mut_var=="beta") {
+        mut_link <- make.link("logit")
         ltraitvec <- mut_link$linkfun(beta0)
+    } else {
+        mut_link <- make.link("log")
+        ltraitvec <- mut_link$linkfun(gamma)
     }
-
+    
     nrpt <- nt %/% rptfreq
     nq <- 9
     qvec <- seq(0,1,length=nq+2)[-c(1,nq+2)]
@@ -80,7 +84,7 @@ run_sim <- function(R0_init=2,  ## >1
                 newltrait <- rep(ltraitvec,mutated)+
                     rnorm(tot_mut,mut_mean,mut_sd)
                 Ivec <- c(Ivec,rep(1,tot_mut))
-                ltraitvec <- c(lbetavec,newltrait)
+                ltraitvec <- c(ltraitvec,newltrait)
             }
         }
         if (all(Ivec==0)) {
