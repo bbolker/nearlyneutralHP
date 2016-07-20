@@ -17,7 +17,7 @@ fn <- "nn_runs_5.rda"
  resList <- list()
  for (i in 1:nrow(lhs_df)) {
      pars <- lhs_df[i,]
-     cat(c(i,pars,"\n")
+     cat(c(i,pars,"\n"))
          argList <- c(list(nt=1e6,rptfreq=1000,R0_init=4,seed=101,
                            mut_var="gamma",
                            progress=TRUE),
