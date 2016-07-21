@@ -12,6 +12,8 @@ set.seed(101)
 for (i in 2:ncol(lhs_df)) {
     lhs_df[,i] <- sample(lhs_df[,i])
 }
+lhs_df <- data.frame(run=1:nrow(lhs_df),lhs_df)
+saveRDS(lhs_df,file="lhs_df.rds")
 ## pairs(lhs_df,pch=".",gap=0)
 fn <- "nn_runs_3.rda"
  resList <- list()

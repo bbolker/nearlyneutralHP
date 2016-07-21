@@ -107,6 +107,7 @@ ggplot(randvals,aes(x=val,fill=factor(N)))+
 Run simulations across a broad range of parameters:
 
 ```{r LHS,results="as.is"}
+lhs_df <- readRDS("lhs_df.rds")
 lhs_df %>% gather(var,val,-run) %>%
     group_by(var) %>%
     summarise(min=min(val),max=max(val)) %>% kable(digits=3)
@@ -142,6 +143,7 @@ rc4B <- rc3 %>% select(-mu,-mut_mean,-mut_sd,-N,-gamma) %>%
 lhs_df <- data.frame(run=1:nrow(lhs_df),lhs_df)
 rc5 <- full_join(rc4A,rc4B,by="run")
 rc6 <- rc5 %>% full_join(lhs_df,by="run") %>% na.omit()
+rc3B <- rc3 %>% mutate(hi_mean=mean_lbeta>0)
 ```
 
 ```{r univ_plot,fig.width=10,fig.height=5}
@@ -152,14 +154,16 @@ ggplot(rc6,aes(val1,val2))+
 ```
 
 ```{r pairs_plots,cache=TRUE}
-ggpfun <- function(var="mean_lbeta") {
-        ggp1 <- ggpairs(rc3,
+ggpfun <- function(var="mean_lbeta",colscale=scale_color_viridis(),
+                   cols=1:5,
+                   data=rc3) {
+        ggp1 <- ggpairs(data,
                         mapping = ggplot2::aes_string(colour = var),
-                        columns=1:5,
+                        columns=cols,
                         lower = list(continuous = wrap("points",size=1)), ## alpha = 0.3,size=0.5)),
                         diag = list(continuous = "blankDiag"),
                         upper = list(continuous = "blank"))
-        return(trim_gg(tweak_colours_gg(ggp1)))
+        return(trim_gg(tweak_colours_gg(ggp1,colscale)))
     }
 gList <- lapply(c("mean_lbeta","Iprop","sd_lbeta"),ggpfun)
 ```
@@ -182,15 +186,51 @@ Mean std dev of logit-beta:
 print(gList[[3]],spacingProportion=0)
 ```
 
+Compare high-transmission-equilibrium (red) vs low-transmission equilibrium (blue). Add proportion infected to the plot ...
+
+```{r bimodal,fig.width=8,fig.height=8,warning=FALSE}
+print(ggpfun(var="hi_mean",colscale=scale_color_manual(values=c("blue","red")),
+             cols=c(1:5,8),data=rc3B),spacingProportion=0)
+```
+
+## Variable-$\gamma$ models
+
+Preliminary results for allowing infectious period to mutate: everybody gets infected, all the time! Infectious period ($1/\gamma$) just keeps increasing ... (becomes very, very long).
+
+I've also run the latin hypercube runs for the variable-gamma case, but I'm not sure I want to worry about the results until I've understood what's going on in this case. Related to the details of order/what the effective $R_0$ etc. is in this particular discret-time model?
+
+```{r read_Gruns}
+L <- load("nn_runs_4.rda")
+Nvals <- c(1000,100,33)
+names(resG) <- Nvals
+all_m <- ldply(resG,identity) %>%
+    mutate(
+        N=as.numeric(.id),
+        Iprop=I/N,
+        time=time/1000,
+        gamma=exp(mean_lgamma)) %>%
+    gather(key=var,value=val,-c(time,.id,N)) %>%
+    filter(var %in% c("Iprop","gamma","mean_lgamma","sd_lgamma"))
+```
+
+
+```{r plot1G,fig.width=8,fig.height=8}
+g0 <- ggplot(all_m,aes(time,val,colour=factor(N)))+
+    geom_line()+facet_wrap(~var,scale="free",nrow=2)+
+    scale_colour_brewer(palette="Set1",name="pop size") +
+    labs(y="",x="time (x1000 steps)")
+g0 %+% subset(all_m,time>100)
+```
+
 ## To do
 
 - figure out bimodality in results for equilibrium transmission!
     - seems to have something to do with standard deviation of mutation; low values
-- allow $\gamma$ to mutate?
-- keep track of extincts?
+	- redo some of the plots with indicator variables (i.e., whether mean beta is high or low)
+- add varying-$\gamma$ output to writeup
+- keep track of extinctions?
 - SIRS?
 - keep track of lineage age?
 - output final distribution?
-- play with parameter values ($\mu$, $a$, $b$, $N$, $\gamma$) (LHS)
 - change the mutational model (e.g. Ornstein-Uhlenbeck, $0 \le \alpha \le 1$)
 - make the code faster
