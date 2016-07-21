@@ -88,7 +88,7 @@ run_sim <- function(R0_init=2,  ## >1
             }
         }
         if (all(Ivec==0)) {
-            message(sprintf("system went extint prematurely (t=%d)",i))
+            message(sprintf("system went extinct prematurely (t=%d)",i))
             break
         }
         if (length(extinct <- which(Ivec==0))>0) {
