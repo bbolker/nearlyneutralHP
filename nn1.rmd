@@ -208,6 +208,7 @@ all_m <- ldply(resG,identity) %>%
         N=as.numeric(.id),
         Iprop=I/N,
         time=time/1000,
+        ## FIXME: will need to use special $linkinv for next runs
         gamma=exp(mean_lgamma)) %>%
     gather(key=var,value=val,-c(time,.id,N)) %>%
     filter(var %in% c("Iprop","gamma","mean_lgamma","sd_lgamma"))
@@ -224,10 +225,14 @@ g0 %+% subset(all_m,time>100)
 
 ## To do
 
-- figure out bimodality in results for equilibrium transmission!
+- figure out bimodality in results for equilibrium transmission
     - seems to have something to do with standard deviation of mutation; low values
-	- redo some of the plots with indicator variables (i.e., whether mean beta is high or low)
-- add varying-$\gamma$ output to writeup
+	- redo plots as binned average plots (red-blue gradient)
+	- redo sims with continuously varying $\gamma$
+- understand $\gamma$ results
+    - $\gamma$ evolution with logit link, maximum value
+	- step through one iteration; asymmetry between $\beta$ and $\gamma$?
+- continuous-time equivalent?
 - keep track of extinctions?
 - SIRS?
 - keep track of lineage age?

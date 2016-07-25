@@ -1,5 +1,6 @@
 ## nearly neutral sims ... Latin hypercube
 
+fn <- "nn_runs_6.rda"
 source("nn2_funs.R")
 nsim <- 1000
 lhs_df <- cbind(
@@ -15,7 +16,6 @@ for (i in 2:ncol(lhs_df)) {
 lhs_df <- data.frame(run=1:nrow(lhs_df),lhs_df)
 saveRDS(lhs_df,file="lhs_df.rds")
 ## pairs(lhs_df,pch=".",gap=0)
-fn <- "nn_runs_3.rda"
  resList <- list()
  for (i in 1:nrow(lhs_df)) {
      pars <- lhs_df[i,]

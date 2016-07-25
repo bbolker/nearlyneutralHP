@@ -7,8 +7,22 @@
 ## gamma: recovery rate
 ## lbeta0: beta of initial
 
+## ugh: needs numeric() input ...
+multlogit <- function(minval,maxval) {
+    delta <- maxval-minval
+    linkfun <- function(mu) .Call(stats:::C_logit_link, (mu-minval)/delta)
+    linkinv <- function(eta) .Call(stats:::C_logit_linkinv, eta)*delta + minval
+    mu.eta <- function(eta) .Call(stats:::C_logit_mu_eta, eta)*delta
+    valideta <- function(eta) TRUE
+    ## need to be able to find C_logit_mu_eta ...
+    ## environment(linkfun) <- environment(linkinv) <- environment(mu.eta) <- environment(valideta) <- asNamespace("stats")
+    structure(list(linkfun = linkfun, linkinv = linkinv, mu.eta = mu.eta, 
+                   valideta = valideta, name = "multlogit"), class = "link-glm")
+}
+
 run_sim <- function(R0_init=2,  ## >1
                     gamma =1/5,  ## >0
+                    gamma_max = Inf,
                     N=1000,     ## integer >0
                     mu=0.01,    ## >0
                     mut_type="shift",
@@ -37,10 +51,10 @@ run_sim <- function(R0_init=2,  ## >1
     beta0 <- R0_init*gamma/N
 
     if (mut_var=="beta") {
-        mut_link <- make.link("logit")
+        if (is.null(mut_link)) mut_link <- make.link("logit")
         ltraitvec <- mut_link$linkfun(beta0)
     } else {
-        mut_link <- make.link("log")
+        if (is.null(mut_link)) mut_link <- make.link("log")
         ltraitvec <- mut_link$linkfun(gamma)
     }
     
@@ -105,6 +119,7 @@ run_sim <- function(R0_init=2,  ## >1
             res[i %/% rptfreq,] <- c(i,S,sum(Ivec),ltrait_mean,ltrait_sd)
         }
     }
+    attr(res,"mut_link") <- mut_link
     return(res)
 }
 
