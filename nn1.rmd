@@ -122,14 +122,17 @@ Haven't spent enough time to figure out what's going on here yet ...
 ```{r load_runs3,echo=FALSE,cache=TRUE}
 fn <- "nn_runs_3.rda"
 load(fn)
+mean_lbeta_cut <- -1
 ## get mean values from last 10%
 rc1 <- ldply(resList,
              function(x) {
-    x %>% filter(time>(0.9*max(time))) %>%
+    if (all(is.na(x$time))) return(data.frame(rbind(rep(NA,4))))
+    x %>% filter(time>(0.9*max(time,na.rm=TRUE))) %>%
         summarise(
             I=mean(I),
             mean_lbeta=mean(mean_lbeta),
-            sd_lbeta=mean(sd_lbeta))
+            sd_lbeta=mean(sd_lbeta),
+            log_extinct_time=log10(max(time,na.rm=TRUE)))
 })
 ## combine with parameter values
 rc2 <- cbind(lhs_df[1:nrow(rc1),],rc1)
@@ -143,14 +146,19 @@ rc4B <- rc3 %>% select(-mu,-mut_mean,-mut_sd,-N,-gamma) %>%
 lhs_df <- data.frame(run=1:nrow(lhs_df),lhs_df)
 rc5 <- full_join(rc4A,rc4B,by="run")
 rc6 <- rc5 %>% full_join(lhs_df,by="run") %>% na.omit()
-rc3B <- rc3 %>% mutate(hi_mean=mean_lbeta>0)
+rc3B <- rc3 %>% mutate(hi_mean=mean_lbeta>mean_lbeta_cut)
+break_ref <- with(rc6,
+                  expand.grid(var2=unique(var2),var1=unique(var1))) %>%
+    mutate(val2=mean_lbeta_cut)
+break_ref[break_ref$var2!="mean_lbeta","val2"] <- NA
 ```
 
-```{r univ_plot,fig.width=10,fig.height=5}
+```{r univ_plot,fig.width=10,fig.height=5,warning=FALSE}
 ggplot(rc6,aes(val1,val2))+
     geom_point(aes(colour=mut_mean))+
-    facet_grid(var2~var1,scale="free")+    
-    scale_color_viridis()
+    facet_grid(var2~var1,scale="free")+
+    scale_color_viridis()+
+    geom_hline(data=break_ref,aes(yintercept=val2),linetype=2)
 ```
 
 ```{r pairs_plots,cache=TRUE}
@@ -168,29 +176,44 @@ ggpfun <- function(var="mean_lbeta",colscale=scale_color_viridis(),
 gList <- lapply(c("mean_lbeta","Iprop","sd_lbeta"),ggpfun)
 ```
 
+<!--  not useful so omitted for now
+
 Mean logit-beta:
 
-```{r pairs_mean_lbeta,fig.width=6,fig.height=6}
+```{r pairs_mean_lbeta,fig.width=6,fig.height=6,eval=FALSE}
 print(gList[[1]],spacingProportion=0)
 ```
 
 Mean proportion infected:
 
-```{r pairs_Iprop_lbeta,fig.width=8,fig.height=8}
+```{r pairs_Iprop_lbeta,fig.width=8,fig.height=8,eval=FALSE}
 print(gList[[2]],spacingProportion=0)
 ```
 
 Mean std dev of logit-beta:
 
-```{r pairs_stddev_lbeta,fig.width=8,fig.height=8}
+```{r pairs_stddev_lbeta,fig.width=8,fig.height=8,eval=FALSE}
 print(gList[[3]],spacingProportion=0)
 ```
+-->
 
 Compare high-transmission-equilibrium (red) vs low-transmission equilibrium (blue). Add proportion infected to the plot ...
 
 ```{r bimodal,fig.width=8,fig.height=8,warning=FALSE}
 print(ggpfun(var="hi_mean",colscale=scale_color_manual(values=c("blue","red")),
              cols=c(1:5,8),data=rc3B),spacingProportion=0)
+```
+
+A prototype of a better? way to plot these ...
+
+```{r testing_bin2d,warning=FALSE}
+xxx <- rc3B %>% select(mut_mean,mut_sd,hi_mean)
+ggplot(xxx,aes(mut_mean,mut_sd,z=hi_mean))+
+    stat_summary_2d(bins=10)+
+    geom_point(aes(shape=hi_mean),colour="purple",bg="white")+
+    scale_shape_manual(values=c(16,21))+
+    scale_y_log10(expand=c(0,0))+
+    scale_x_continuous(expand=c(0,0))
 ```
 
 ## Variable-$\gamma$ models
