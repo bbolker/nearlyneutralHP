@@ -22,7 +22,6 @@ test_that("basics", {
  sd_lgamma = 1.03017299599263), .Names = c("time", "S", "I", 
 "mean_lgamma", "sd_lgamma")))
 
-
 }
 
 test_that("multlogit", {
@@ -30,3 +29,25 @@ test_that("multlogit", {
     Lfun <- multlogit(0,1)
     all.equal(Lfun$linkinv(as.numeric(-5:5)),Lfun0$linkinv(as.numeric(-5:5)))
 })
+
+test_that("continuous", {
+    res4 <- run_sim(nt=1e3,rptfreq=10,seed=101,discrete=FALSE)
+    expect_equal(c(res4[100,]),
+ structure(list(time = 1000, S = 137, I = 863, mean_lbeta = -6.36886258791232, 
+  sd_lbeta = 0.159849030801711), .Names = c("time", "S", "I", 
+"mean_lbeta", "sd_lbeta")))
+}
+
+if (FALSE) {
+    system.time(res1A <- run_sim(nt=1e4,rptfreq=10,seed=101))
+    system.time(res1B <- run_sim(nt=1e4,rptfreq=10,seed=101,discrete=FALSE))
+    save("res1A","res1B",file="../simdata/simdisc.rda")
+    library(ggplot2); theme_set(theme_bw())
+    library(tidyr)
+    library(dplyr)
+    rL <- lapply(list(res1A,res1B),gather,key=var,value=val,-time) %>%
+        setNames(c("disc","cont")) %>% bind_rows(.id="type")
+    ggplot(rL,aes(time,val,colour=type))+geom_line()+
+        facet_wrap(~var,scale="free")+
+        scale_colour_brewer(palette="Set1")
+}
