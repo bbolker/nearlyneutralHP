@@ -9,3 +9,11 @@ do_mut <- function(state, mut_var, orig_trait, mut_mean, mut_sd) {
     invisible(.Call('pevosim_do_mut', PACKAGE = 'pevosim', state, mut_var, orig_trait, mut_mean, mut_sd))
 }
 
+do_extinct <- function(state, mut_var, extinct) {
+    invisible(.Call('pevosim_do_extinct', PACKAGE = 'pevosim', state, mut_var, extinct))
+}
+
+run_stepC <- function(state, t_tot, t_end, params, debug = TRUE) {
+    invisible(.Call('pevosim_run_stepC', PACKAGE = 'pevosim', state, t_tot, t_end, params, debug))
+}
+

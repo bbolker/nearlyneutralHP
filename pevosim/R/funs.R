@@ -10,7 +10,7 @@ get_mut <- function(orig_trait,
                     mut_mean,mut_sd,mut_type="shift") {
     if (mut_type=="shift") {
         new_trait <- orig_trait+
-               rnorm(length(orig_trait),mut_mean,mut_sd)
+            rnorm(length(orig_trait),mut_mean,mut_sd)
         if (any(is.na(new_trait))) stop("??")
         return(new_trait)
     } else stop("unknown mut_type")
@@ -83,7 +83,8 @@ run_sim <- function(R0_init=2,  ## >1
                     discrete=TRUE, ## discrete-time?
                     seed=NULL,
                     progress=FALSE,
-                    debug=FALSE) {
+                    debug=FALSE,
+                    useCpp=FALSE) {
 
     dfun <- function(lab="") {
         if (debug) {
@@ -119,7 +120,8 @@ run_sim <- function(R0_init=2,  ## >1
     ## parameters structure (parallel vectors), so these can
     ## be modified via function and passed back ...
     state <- list(beta=beta0,gamma=gamma0,
-                  ltraitvec=ltraitvec,Ivec=Ivec)
+                  ltraitvec=ltraitvec,Ivec=Ivec,
+                  S=S)
 
     dfun("init")
     
@@ -129,25 +131,26 @@ run_sim <- function(R0_init=2,  ## >1
     ## nq <- 9
     ## qvec <- seq(0,1,length=nq+2)[-c(1,nq+2)]
     res <- as.data.frame(matrix(NA,nrow=nrpt,ncol=5,
-            dimnames=list(NULL,c("time","S","I",
-                                 paste0(c("mean_l","sd_l"),mut_var)))))
+                                dimnames=list(NULL,c("time","S","I",
+                                                     paste0(c("mean_l","sd_l"),mut_var)))))
 
     t_tot <- 0  ## for continuous model
 
 
     for (i in 1:nrpt) {
         ## cat("time ",i,"\n")
-        for (j in 1:rptfreq) {
-            if (discrete) {
+        if (discrete) {
+            for (j in 1:rptfreq) {
                 ## cat("betavec:",betavec,"\n")
                 ## cat("Ivec:",Ivec,"\n")
                 ## prob of escaping infection completely
-                uninf <- rbinom(1,size=S,prob=prod((1-state$beta)^state$Ivec))
+                uninf <- rbinom(1,size=state$S,
+                                prob=prod((1-state$beta)^state$Ivec))
                 ## division of new infectives among strains
                 ## 'prob' is internally normalized
-                newinf <- drop(rmultinom(1,size=S-uninf,
+                newinf <- drop(rmultinom(1,size=state$S-uninf,
                                          prob=state$Ivec*state$beta))
-                stopifnot(uninf+sum(newinf)==S)
+                stopifnot(uninf+sum(newinf)==state$S)
                 recover <- rbinom(length(state$Ivec),
                                   size=state$Ivec,prob=state$gamma)
                 ## fraction of new infections -> mutation
@@ -180,20 +183,30 @@ run_sim <- function(R0_init=2,  ## >1
                     state <- do_extinct(state,mut_var,extinct)
                 }
                 dfun("after mutation")
-                S <- S + sum(recover) - sum(newinf)
-                stopifnot(length(S)==1)
-                stopifnot(sum(state$Ivec)+S == N)
-                
-            } else  ## end discrete case
-            {
+                state$S <- state$S + sum(recover) - sum(newinf)
+                stopifnot(length(state$S)==1)
+                stopifnot(sum(state$Ivec)+state$S == N)
+            }  ## rptfreq time steps
+        } else  ## end discrete case
+        {
+            if (useCpp) {
+                cat("useCpp: state: \n")
+                print(state)
+                run_stepC(state,
+                          (i-1)*rptfreq,
+                          i*rptfreq,
+                params=list(mu=mu,
+                            mut_sd=mut_sd,
+                            mut_mean=mut_mean,
+                            mut_var=mut_var,
+                            mut_link=""), ## FIXME
+                debug=debug)
+            } else { ## use R
                 get_rates <- function(state) {
                     inf_rates <- state$beta*state$Ivec*S
                     recover_rates <- state$gamma*state$Ivec
                     c(inf_rates,recover_rates)
                 }
-                ## how many times have I tried to figure this out?
-                ## want 1 ... N -> 1, N+1 ... 2*N -> 2
-                ## ((x-1)%%N)+1
                 while (t_tot<(i+1)*rptfreq) {
                     nstrain <- length(state$ltraitvec)
                     rates <- get_rates(state)
@@ -204,7 +217,7 @@ run_sim <- function(R0_init=2,  ## >1
                     strain <- ((w-1) %% nstrain) + 1
                     if (event==2) { ## recovery
                         state$Ivec[strain] <- state$Ivec[strain]-1
-                        S <- S+1
+                        state$S <- state$S+1
                         if (state$Ivec[strain]==0) {
                             state <- do_extinct(state,mut_var,strain)
                         }
@@ -218,19 +231,19 @@ run_sim <- function(R0_init=2,  ## >1
                         } else {
                             state$Ivec[strain] <- state$Ivec[strain]+1
                         }
-                        S <- S - 1
+                        state$S <- state$S - 1
                     } ## infection
-                    stopifnot(length(S)==1)
-                    stopifnot(sum(state$Ivec)+S == N)
+                    stopifnot(length(state$S)==1)
+                    stopifnot(sum(state$Ivec)+state$S == N)
                 } ## loop until end of time period
-            }
-        }
+            } ## use R, not Rcpp
+        } ## continuous time
         ## summary statistics
         I_tot <- sum(state$Ivec)
         ltrait_mean <- sum(state$Ivec*state$ltraitvec)/I_tot
         ltrait_sd <- sqrt(sum(state$Ivec*(state$ltraitvec-ltrait_mean)^2)/I_tot)
         if (progress) cat(".")
-        res[i,] <- c(i*rptfreq,S,I_tot,ltrait_mean,ltrait_sd)
+        res[i,] <- c(i*rptfreq,state$S,I_tot,ltrait_mean,ltrait_sd)
     }
     attr(res,"mut_link") <- mut_link
     return(res)

@@ -24,6 +24,11 @@ test_that("basics", {
 
 }
 
+r1 <- run_sim(nt=1e2,rptfreq=1,discrete=FALSE,seed=101)
+sink("cppdebug.txt")
+r2 <- run_sim(nt=1e2,rptfreq=1,discrete=FALSE,seed=101,useCpp=TRUE,debug=TRUE)
+sink()
+
 test_that("multlogit", {
     Lfun0 <- make.link("logit")
     Lfun <- multlogit(0,1)
@@ -42,6 +47,7 @@ if (FALSE) {
     system.time(res1A <- run_sim(nt=1e4,rptfreq=10,seed=101))
     system.time(res1B <- run_sim(nt=1e4,rptfreq=10,seed=101,discrete=FALSE))
     save("res1A","res1B",file="../simdata/simdisc.rda")
+    load("../simdata/simdisc.rda")
     library(ggplot2); theme_set(theme_bw())
     library(tidyr)
     library(dplyr)

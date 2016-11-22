@@ -33,6 +33,10 @@ vignettes/*.pdf
 *.knit.md
 
 .#*
+*~
+
+*.o
+*.so
 
 nohup.out
 *.Rout
