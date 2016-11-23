@@ -2,6 +2,12 @@
 library(testthat)
 library(pevosim)
 
+if (FALSE) {
+    path <- c("/media/sf_Documents/projects/nearlyneutralHP/pevosim")
+    source(file.path(path,"R/funs.R"))
+    Rcpp::sourceCpp(file.path(path,"src/funs.cpp"))
+}
+
 context("discrete models")
 test_that("basics", {
     ## basic run
@@ -44,16 +50,34 @@ test_that("continuous", {
 }
 
 if (FALSE) {
-    system.time(res1A <- run_sim(nt=1e4,rptfreq=10,seed=101))
-    system.time(res1B <- run_sim(nt=1e4,rptfreq=10,seed=101,discrete=FALSE))
-    save("res1A","res1B",file="../simdata/simdisc.rda")
+    t1A <- system.time(res1A <- run_sim(nt=1e4,rptfreq=10,seed=101,progress=TRUE))
+    t1B <- system.time(res1B <- run_sim(nt=1e4,rptfreq=10,seed=101,discrete=FALSE,progress=TRUE))
+    t1C <- system.time(res1C <- run_sim(nt=1e4,rptfreq=10,seed=101,discrete=FALSE,
+                                 useCpp=TRUE,progress=TRUE))
+    t1D <- system.time(res1D <- run_sim(nt=1e4,rptfreq=10,seed=101,discrete=FALSE,
+                                        mut_link=make.link("logit"),progress=TRUE))
+
+    save(list=ls(pattern=("(res|t)1[A-D]")),file="../simdata/simdisc.rda")
     load("../simdata/simdisc.rda")
     library(ggplot2); theme_set(theme_bw())
     library(tidyr)
     library(dplyr)
-    rL <- lapply(list(res1A,res1B),gather,key=var,value=val,-time) %>%
-        setNames(c("disc","cont")) %>% bind_rows(.id="type")
+    rL <- lapply(list(res1A,res1B,res1C,res1D),gather,key=var,value=val,-time) %>%
+        setNames(c("disc","cont","contCpp","cont_logit")) %>% bind_rows(.id="type")
     ggplot(rL,aes(time,val,colour=type))+geom_line()+
         facet_wrap(~var,scale="free")+
         scale_colour_brewer(palette="Set1")
 }
+
+## UNIT TESTS, continuous-time models
+
+## single infection
+run_sim(nt=1e-8,R0_init=10,Ivec=1,rptfreq=1e-8,discrete=FALSE,seed=101,useCpp=TRUE)
+run_sim(nt=1e-8,R0_init=10,Ivec=1,rptfreq=1e-8,discrete=FALSE,seed=101,useCpp=FALSE)
+## single infection plus mutation
+run_sim(nt=1e-8,R0_init=10,Ivec=1,rptfreq=1e-8,mu=1,discrete=FALSE,seed=101,useCpp=TRUE)
+run_sim(nt=1e-8,R0_init=10,Ivec=1,rptfreq=1e-8,mu=1,discrete=FALSE,seed=101,useCpp=FALSE)
+## single recovery
+run_sim(nt=1e-8,rptfreq=1e-8,R0_init=0.01,Ivec=1,discrete=FALSE,seed=101,useCpp=TRUE)
+run_sim(nt=1e-8,rptfreq=1e-8,R0_init=0.01,Ivec=1,discrete=FALSE,seed=101,useCpp=FALSE)
+

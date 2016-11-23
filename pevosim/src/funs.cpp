@@ -8,7 +8,7 @@ typedef std::vector<double> dvec;
 typedef std::vector<int> ivec;
 
 // [[Rcpp::export]]
-NumericVector get_rates(dvec betavec,
+NumericVector get_ratesC(dvec betavec,
 			dvec gamma,
 			ivec Ivec,
 			int S) {
@@ -32,13 +32,11 @@ NumericVector get_rates(dvec betavec,
     return wrap(inf_rates);
 }
 
-// [[Rcpp::export]]
-
 void do_mutC(List state,
 	    const String mut_var,
 	    dvec orig_trait,
 	    double mut_mean,
-	    double mut_sd) {
+            double mut_sd) {
 
     // (for now ...) assume a *single* mutation;
     // assume exponential inverse-link
@@ -64,33 +62,42 @@ void do_mut2(dvec &ltraitvec,
 	     const String mut_var,
 	     int strain,
 	     double mut_mean,
-	     double mut_sd) {
+	     double mut_sd,
+             bool debug=false) {
 
     // (for now ...) assume a *single* mutation;
     // assume exponential inverse-link
 
     double new_trait;
 
+    double orig_ltrait = ltraitvec[strain];
     double orig_beta = betavec[strain];
     double orig_gamma = gamma[strain];
     double mut_chg = rnorm(1,mut_mean,mut_sd)[0];
+    double new_ltrait = orig_ltrait + mut_chg;
+
     if (mut_var=="beta") {
-	new_trait = orig_beta + mut_chg;
-	betavec.push_back(exp(new_trait));
+	betavec.push_back(exp(new_ltrait));
+	if (debug) {
+	    int nstrain=betavec.size();
+            Rprintf("%d/%d %lf %lf %lf %lf\n",
+		    strain,nstrain,
+		    orig_beta,mut_chg,new_trait,exp(new_trait));
+	}
 	gamma.push_back(orig_gamma);
     } else {
 	new_trait = orig_gamma + mut_chg;
 	gamma.push_back(exp(new_trait));
 	betavec.push_back(exp(orig_beta));
     }
-    ltraitvec.push_back(new_trait);
+    ltraitvec.push_back(new_ltrait);
     Ivec.push_back(1);
 
 }
 
 // [[Rcpp::export]]
 
-void do_extinct(List state,
+void do_extinctC(List state,
 		const String mut_var,
 		int extinct) {
 
@@ -120,12 +127,11 @@ void do_extinct2(dvec &mutvec,
     mutvec.erase(mutvec.begin() + (extinct));
     ltraitvec.erase(ltraitvec.begin() + (extinct));
     Ivec.erase(Ivec.begin() + (extinct));
-    Rprintf("do_extinct2: %d\n",Ivec.size());
+    // Rprintf("do_extinct2: %d\n",Ivec.size());
 
 }
 
 // [[Rcpp::export]]
-
 void run_stepC(List state,double t_tot, double t_end,
 	       List params, bool debug=true) {
 
@@ -147,13 +153,14 @@ void run_stepC(List state,double t_tot, double t_end,
     if (debug) Rprintf("params loaded\n");
 
     int nstrain, nrates, event, strain, w;
-    double r_mut;
+    double r_mut, tot_rate;
     NumericVector rates;
     IntegerVector wseq;
 
+
     while (t_tot<t_end) {
 	nstrain = ltraitvec.size();	
-	rates = get_rates(betavec,gamma,Ivec,S);
+	rates = get_ratesC(betavec,gamma,Ivec,S);
 	if (debug) {
 	    Rprintf("t=%lf n=%d S=%d I=%d minrate=%lf maxrate=%lf\n",t_tot,nstrain,
 		    S,Ivec[0]);
@@ -162,6 +169,11 @@ void run_stepC(List state,double t_tot, double t_end,
 	if (debug) Rcout << "rates " << rates << std::endl;
 	nrates = 2*nstrain;
 	wseq = seq(1,nrates);
+	// FIXME: should just do this manually, e.g.
+	if (false) {
+	    
+	}
+	
 	w = RcppArmadillo::sample(wseq, 1, false, rates)[0];
 	// w = sample(length(rates),size=1,prob=rates);
 	
@@ -181,7 +193,8 @@ void run_stepC(List state,double t_tot, double t_end,
 			mut_var,
 			strain,
 			mut_mean,
-			mut_sd);
+			mut_sd,
+                        debug);
 	    } else {
 		Ivec[strain]++;
 	    }

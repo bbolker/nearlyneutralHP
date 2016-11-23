@@ -6,9 +6,6 @@
 
 using namespace Rcpp;
 
-typedef std::vector<double> dvec;
-typedef std::vector<int> ivec;
-
 // get_rates
 NumericVector get_rates(dvec betavec, dvec gamma, ivec Ivec, int S);
 RcppExport SEXP pevosim_get_rates(SEXP betavecSEXP, SEXP gammaSEXP, SEXP IvecSEXP, SEXP SSEXP) {
@@ -21,20 +18,6 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< int >::type S(SSEXP);
     rcpp_result_gen = Rcpp::wrap(get_rates(betavec, gamma, Ivec, S));
     return rcpp_result_gen;
-END_RCPP
-}
-// do_mut
-void do_mut(List state, const String mut_var, dvec orig_trait, double mut_mean, double mut_sd);
-RcppExport SEXP pevosim_do_mut(SEXP stateSEXP, SEXP mut_varSEXP, SEXP orig_traitSEXP, SEXP mut_meanSEXP, SEXP mut_sdSEXP) {
-BEGIN_RCPP
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< List >::type state(stateSEXP);
-    Rcpp::traits::input_parameter< const String >::type mut_var(mut_varSEXP);
-    Rcpp::traits::input_parameter< dvec >::type orig_trait(orig_traitSEXP);
-    Rcpp::traits::input_parameter< double >::type mut_mean(mut_meanSEXP);
-    Rcpp::traits::input_parameter< double >::type mut_sd(mut_sdSEXP);
-    do_mut(state, mut_var, orig_trait, mut_mean, mut_sd);
-    return R_NilValue;
 END_RCPP
 }
 // do_extinct

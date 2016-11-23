@@ -78,6 +78,7 @@ run_sim <- function(R0_init=2,  ## >1
                     mut_sd=0.5, ## >0
                     mut_var="beta",
                     mut_link=NULL,
+                    Ivec=NULL,
                     nt=100000,
                     rptfreq=100, ## divides nt?
                     discrete=TRUE, ## discrete-time?
@@ -103,7 +104,10 @@ run_sim <- function(R0_init=2,  ## >1
 
     if (!is.null(seed)) set.seed(seed)
 
-    Ivec <- round(N*(1-1/R0_init))
+    if (is.null(Ivec)) {
+        ## start at equilibrium I ...
+        Ivec <- max(1,round(N*(1-1/R0_init)))
+    }
     S <- N-sum(Ivec)
 
     ## R0 = beta*N/gamma
@@ -111,7 +115,9 @@ run_sim <- function(R0_init=2,  ## >1
 
     ## set up initial trait vector
     if (mut_var=="beta") {
-        if (is.null(mut_link)) mut_link <- make.link("logit")
+        if (is.null(mut_link)) {
+            mut_link <- if (discrete) make.link("logit") else make.link("log")
+        }
         ltraitvec <- mut_link$linkfun(beta0)
     } else {
         if (is.null(mut_link)) mut_link <- make.link("log")
@@ -183,15 +189,18 @@ run_sim <- function(R0_init=2,  ## >1
                     state <- do_extinct(state,mut_var,extinct)
                 }
                 dfun("after mutation")
-                state$S <- state$S + sum(recover) - sum(newinf)
+                if (length(state$Ivec)>0) {
+                    ## avoid X+numeric(0)==numeric(0) problem ...
+                    state$S <- state$S + sum(recover) - sum(newinf)
+                }
                 stopifnot(length(state$S)==1)
                 stopifnot(sum(state$Ivec)+state$S == N)
             }  ## rptfreq time steps
         } else  ## end discrete case
         {
             if (useCpp) {
-                cat("useCpp: state: \n")
-                print(state)
+                ## cat("useCpp: state: \n")
+                ## print(state)
                 run_stepC(state,
                           (i-1)*rptfreq,
                           i*rptfreq,
@@ -202,11 +211,6 @@ run_sim <- function(R0_init=2,  ## >1
                             mut_link=""), ## FIXME
                 debug=debug)
             } else { ## use R
-                get_rates <- function(state) {
-                    inf_rates <- state$beta*state$Ivec*S
-                    recover_rates <- state$gamma*state$Ivec
-                    c(inf_rates,recover_rates)
-                }
                 while (t_tot<(i+1)*rptfreq) {
                     nstrain <- length(state$ltraitvec)
                     rates <- get_rates(state)
@@ -215,13 +219,6 @@ run_sim <- function(R0_init=2,  ## >1
                     w <- sample(length(rates),size=1,prob=rates)
                     event <-  ((w-1) %/% nstrain) + 1
                     strain <- ((w-1) %% nstrain) + 1
-                    if (event==2) { ## recovery
-                        state$Ivec[strain] <- state$Ivec[strain]-1
-                        state$S <- state$S+1
-                        if (state$Ivec[strain]==0) {
-                            state <- do_extinct(state,mut_var,strain)
-                        }
-                    }
                     if (event==1) { ## infection
                         if (runif(1)<mu) {
                             state <- do_mut(state,mut_var,
@@ -233,6 +230,14 @@ run_sim <- function(R0_init=2,  ## >1
                         }
                         state$S <- state$S - 1
                     } ## infection
+
+                    if (event==2) { ## recovery
+                        state$Ivec[strain] <- state$Ivec[strain]-1
+                        state$S <- state$S+1
+                        if (state$Ivec[strain]==0) {
+                            state <- do_extinct(state,mut_var,strain)
+                        }
+                    }
                     stopifnot(length(state$S)==1)
                     stopifnot(sum(state$Ivec)+state$S == N)
                 } ## loop until end of time period
@@ -244,8 +249,19 @@ run_sim <- function(R0_init=2,  ## >1
         ltrait_sd <- sqrt(sum(state$Ivec*(state$ltraitvec-ltrait_mean)^2)/I_tot)
         if (progress) cat(".")
         res[i,] <- c(i*rptfreq,state$S,I_tot,ltrait_mean,ltrait_sd)
-    }
+        ## DRY ...
+        if (all(state$Ivec==0)) {
+            message(sprintf("system went extinct prematurely (t=%d)",i))
+            break
+        }
+    } ## loop over reporting frequencies
     attr(res,"mut_link") <- mut_link
     return(res)
 }
 
+
+get_rates <- function(state) {
+    inf_rates <- state$beta*state$Ivec*state$S
+    recover_rates <- state$gamma*state$Ivec
+    return(c(inf_rates,recover_rates))
+}
