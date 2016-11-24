@@ -31,9 +31,11 @@ do_extinct <- function(state,mut_var,extinct) {
     return(state)
 }
 
-## not used yet
-## ugh: needs numeric() input ...
-multlogit <- function(minval,maxval) {
+##' Logit transform on (min,max) rather than (0,1)
+##' @param minval minimum value
+##' @param maxval maximum value
+##' @export
+multlogit <- function(minval=0,maxval=1) {
     delta <- maxval-minval
     ## R CMD check will always complain about this.
     ## C_logit_link is not otherwise externally accessible.
@@ -82,7 +84,7 @@ run_sim <- function(R0_init=2,  ## >1
                     mut_link=NULL,
                     Ivec=NULL,
                     nt=100000,
-                    rptfreq=100, ## divides nt?
+                    rptfreq=min(nt/500,1), ## divides nt?
                     discrete=TRUE, ## discrete-time?
                     seed=NULL,
                     progress=FALSE,
@@ -262,6 +264,9 @@ run_sim <- function(R0_init=2,  ## >1
 }
 
 
+#' Get rates
+#' @param state list of state vectors
+#' @export
 get_rates <- function(state) {
     inf_rates <- state$beta*state$Ivec*state$S
     recover_rates <- state$gamma*state$Ivec

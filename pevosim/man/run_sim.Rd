@@ -7,8 +7,8 @@
 run_sim(R0_init = 2, gamma0 = 1/5, gamma_max = Inf, N = 1000,
   mu = 0.01, mut_type = "shift", mut_mean = -1, mut_sd = 0.5,
   mut_var = "beta", mut_link = NULL, Ivec = NULL, nt = 1e+05,
-  rptfreq = 100, discrete = TRUE, seed = NULL, progress = FALSE,
-  debug = FALSE, useCpp = FALSE)
+  rptfreq = min(nt/500, 1), discrete = TRUE, seed = NULL,
+  progress = FALSE, debug = FALSE, useCpp = FALSE)
 }
 \arguments{
 \item{R0_init}{starting value of R0}
