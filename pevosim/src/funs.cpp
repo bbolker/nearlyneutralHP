@@ -1,7 +1,9 @@
-// http://gallery.rcpp.org/articles/using-the-Rcpp-based-sample-implementation/
-#include <RcppArmadilloExtensions/sample.h>
+#include <Rcpp.h>
 #include "pevosim.h"
+/* // http://gallery.rcpp.org/articles/using-the-Rcpp-based-sample-implementation/
+// #include <RcppArmadilloExtensions/sample.h>
 // [[Rcpp::depends(RcppArmadillo)]]
+*/
 
 using namespace Rcpp;
 
@@ -9,20 +11,28 @@ typedef std::vector<double> dvec;
 typedef std::vector<int> ivec;
 
 // [[Rcpp::export]]
+int my_sample(NumericVector rates, double sum_rates) {
+    double val = runif(1)[0]*sum_rates;
+    int w=0;
+    while(val>=0) {
+	val -= rates[w++];
+    }
+    return w;
+}
+
+// [[Rcpp::export]]
 NumericVector get_ratesC(dvec betavec,
-			dvec gamma,
-			ivec Ivec,
-			int S) {
+			 dvec gamma,
+			 ivec Ivec,
+			 int S) {
 
     int nstrains = betavec.size();
-    int nrates = 2*nstrains;
-    int i;
-    NumericVector rates(nrates);
+
     // http://stackoverflow.com/questions/6399090/c-convert-vectorint-to-vectordouble
     dvec inf_rates(nstrains);
     dvec recover_rates(nstrains);
 
-    for (i=0; i<nstrains; i++) {
+    for (int i=0; i<nstrains; i++) {
 	inf_rates[i]=betavec[i]*Ivec[i]*S;
 	recover_rates[i]= gamma[i]*Ivec[i];
     }
@@ -153,11 +163,11 @@ void run_stepC(List state,double t_tot, double t_end,
 
     if (debug) Rprintf("params loaded\n");
 
-    int nstrain, nrates, event, strain, w;
-    double r_mut, tot_rate;
+    int nstrain, event, strain, w;
+    double r_mut, tot_rates;
     NumericVector rates;
-    IntegerVector wseq;
-
+    // int nrates;
+    // IntegerVector wseq;
 
     while (t_tot<t_end) {
 	nstrain = ltraitvec.size();	
@@ -166,17 +176,13 @@ void run_stepC(List state,double t_tot, double t_end,
 	    Rprintf("t=%lf n=%d S=%d I=%d minrate=%lf maxrate=%lf\n",t_tot,nstrain,
 		    S,Ivec[0]);
 	}
-	t_tot += rexp(1,sum(rates))[0];
+	tot_rates = sum(rates);
+	t_tot += rexp(1,tot_rates)[0];
 	if (debug) Rcout << "rates " << rates << std::endl;
-	nrates = 2*nstrain;
-	wseq = seq(1,nrates);
-	// FIXME: should just do this manually, e.g.
-	if (false) {
-	    
-	}
-	
-	w = RcppArmadillo::sample(wseq, 1, false, rates)[0];
-	// w = sample(length(rates),size=1,prob=rates);
+	// nrates = 2*nstrain;
+	// wseq = seq(1,nrates);
+	// w = RcppArmadillo::sample(wseq, 1, false, rates)[0];
+	w = my_sample(rates, tot_rates);
 	
 	event =  ((w-1) / nstrain) + 1;
 	strain = ((w-1) % nstrain); // 0-index!

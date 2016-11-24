@@ -59,6 +59,7 @@ multlogit <- function(minval,maxval) {
 #' @param mut_sd mutational standard deviations
 #' @param mut_var which variable(s) mutate?
 #' @param mut_link link function for mutation
+#' @param Ivec initial vector of infected numbers
 #' @param mu mutation probability per replication
 #' @param discrete (logical) run discrete-time sim?
 #' @param seed random-number seed
@@ -66,6 +67,7 @@ multlogit <- function(minval,maxval) {
 #' @param rptfreq reporting frequency (should divide nt)
 #' @param progress draw progress bar?
 #' @param debug (logical) debugging output?
+#' @param useCpp (logical) use C++ code for continuous-time models?
 #' @importFrom stats make.link rnorm rbinom rmultinom rexp runif
 #' @export
 run_sim <- function(R0_init=2,  ## >1

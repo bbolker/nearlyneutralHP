@@ -6,8 +6,9 @@
 \usage{
 run_sim(R0_init = 2, gamma0 = 1/5, gamma_max = Inf, N = 1000,
   mu = 0.01, mut_type = "shift", mut_mean = -1, mut_sd = 0.5,
-  mut_var = "beta", mut_link = NULL, nt = 1e+05, rptfreq = 100,
-  discrete = TRUE, seed = NULL, progress = FALSE, debug = FALSE)
+  mut_var = "beta", mut_link = NULL, Ivec = NULL, nt = 1e+05,
+  rptfreq = 100, discrete = TRUE, seed = NULL, progress = FALSE,
+  debug = FALSE, useCpp = FALSE)
 }
 \arguments{
 \item{R0_init}{starting value of R0}
@@ -30,6 +31,8 @@ run_sim(R0_init = 2, gamma0 = 1/5, gamma_max = Inf, N = 1000,
 
 \item{mut_link}{link function for mutation}
 
+\item{Ivec}{initial vector of infected numbers}
+
 \item{nt}{number of time steps}
 
 \item{rptfreq}{reporting frequency (should divide nt)}
@@ -41,6 +44,8 @@ run_sim(R0_init = 2, gamma0 = 1/5, gamma_max = Inf, N = 1000,
 \item{progress}{draw progress bar?}
 
 \item{debug}{(logical) debugging output?}
+
+\item{useCpp}{(logical) use C++ code for continuous-time models?}
 }
 \description{
 Evolutionary simulations

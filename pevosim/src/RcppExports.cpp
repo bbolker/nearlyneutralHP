@@ -7,6 +7,18 @@
 
 using namespace Rcpp;
 
+// my_sample
+int my_sample(NumericVector rates, double sum_rates);
+RcppExport SEXP pevosim_my_sample(SEXP ratesSEXP, SEXP sum_ratesSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericVector >::type rates(ratesSEXP);
+    Rcpp::traits::input_parameter< double >::type sum_rates(sum_ratesSEXP);
+    rcpp_result_gen = Rcpp::wrap(my_sample(rates, sum_rates));
+    return rcpp_result_gen;
+END_RCPP
+}
 // get_ratesC
 NumericVector get_ratesC(dvec betavec, dvec gamma, ivec Ivec, int S);
 RcppExport SEXP pevosim_get_ratesC(SEXP betavecSEXP, SEXP gammaSEXP, SEXP IvecSEXP, SEXP SSEXP) {

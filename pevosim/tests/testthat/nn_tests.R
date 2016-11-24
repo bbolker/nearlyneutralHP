@@ -94,3 +94,8 @@ test_that("single steps", {
                   "system went extinct")
     expect_equal(c(r5),c(r6))
 })
+
+
+r <- c(0.6,0.3,0.05,0.05)
+my_sample(r,sum(r))
+tt <- prop.table(table(replicate(10000,my_sample(r,sum(r)))))
