@@ -44,7 +44,8 @@ opts_chunk$set(echo=FALSE)
 ```
 
 ```{r melt}
-L <- load("nn_runs_1.rda")
+simdata_path <- "../simdata"
+L <- load(file.path(simdata_path,"nn_runs_1.rda"))
 all_runs <- lme4:::namedList(res_1000,res_100,res_33)
 gamma <- 1/5
 all_m <- ldply(all_runs,identity) %>%
@@ -107,7 +108,7 @@ ggplot(randvals,aes(x=val,fill=factor(N)))+
 Run simulations across a broad range of parameters:
 
 ```{r LHS,results="as.is"}
-lhs_df <- readRDS("lhs_df.rds")
+lhs_df <- readRDS(file.path(simdata_path,"lhs_df.rds"))
 lhs_df %>% gather(var,val,-run) %>%
     group_by(var) %>%
     summarise(min=min(val),max=max(val)) %>% kable(digits=3)
@@ -121,7 +122,7 @@ Haven't spent enough time to figure out what's going on here yet ...
 
 ```{r load_runs3,echo=FALSE,cache=TRUE}
 fn <- "nn_runs_3.rda"
-load(fn)
+L <- load(file.path(simdata_path,fn))
 mean_lbeta_cut <- -1
 ## get mean values from last 10%
 rc1 <- ldply(resList,
@@ -223,7 +224,7 @@ Preliminary results for allowing infectious period to mutate: everybody gets inf
 I've also run the latin hypercube runs for the variable-gamma case, but I'm not sure I want to worry about the results until I've understood what's going on in this case. Related to the details of order/what the effective $R_0$ etc. is in this particular discret-time model?
 
 ```{r read_Gruns}
-L <- load("nn_runs_4.rda")
+L <- load(file.path(simdata_path,"nn_runs_4.rda"))
 Nvals <- c(1000,100,33)
 names(resG) <- Nvals
 all_m <- ldply(resG,identity) %>%
@@ -246,12 +247,21 @@ g0 <- ggplot(all_m,aes(time,val,colour=factor(N)))+
 g0 %+% subset(all_m,time>100)
 ```
 
+## Continuous-time models
+
+## Constraints
+
+Suppose we have a constraint (tradeoff curve) that gives the maximum value of $\beta$ (maybe as a function of $\gamma$ as in a standard tradeoff curve).  The simplest thing to do is simply to implement a sharp cutoff. More realistic possibilities would be to do something like making the trait space logarithmic (?) on the legal space, so that the ``maximum'' value is transformed to infinity \ldots
+
+
+
 ## To do
 
 - figure out bimodality in results for equilibrium transmission
     - seems to have something to do with standard deviation of mutation; low values
 	- redo plots as binned average plots (red-blue gradient)
 	- redo sims with continuously varying $\gamma$
+	- Morgan: sigmoidal transition to high beta?
 - understand $\gamma$ results
     - $\gamma$ evolution with logit link, maximum value
 	- step through one iteration; asymmetry between $\beta$ and $\gamma$?
@@ -262,3 +272,4 @@ g0 %+% subset(all_m,time>100)
 - output final distribution?
 - change the mutational model (e.g. Ornstein-Uhlenbeck, $0 \le \alpha \le 1$)
 - make the code faster
+
