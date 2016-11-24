@@ -30,11 +30,6 @@ test_that("basics", {
 
 }
 
-r1 <- run_sim(nt=1e2,rptfreq=1,discrete=FALSE,seed=101)
-sink("cppdebug.txt")
-r2 <- run_sim(nt=1e2,rptfreq=1,discrete=FALSE,seed=101,useCpp=TRUE,debug=TRUE)
-sink()
-
 test_that("multlogit", {
     Lfun0 <- make.link("logit")
     Lfun <- multlogit(0,1)
@@ -71,13 +66,31 @@ if (FALSE) {
 
 ## UNIT TESTS, continuous-time models
 
-## single infection
-run_sim(nt=1e-8,R0_init=10,Ivec=1,rptfreq=1e-8,discrete=FALSE,seed=101,useCpp=TRUE)
-run_sim(nt=1e-8,R0_init=10,Ivec=1,rptfreq=1e-8,discrete=FALSE,seed=101,useCpp=FALSE)
-## single infection plus mutation
-run_sim(nt=1e-8,R0_init=10,Ivec=1,rptfreq=1e-8,mu=1,discrete=FALSE,seed=101,useCpp=TRUE)
-run_sim(nt=1e-8,R0_init=10,Ivec=1,rptfreq=1e-8,mu=1,discrete=FALSE,seed=101,useCpp=FALSE)
-## single recovery
-run_sim(nt=1e-8,rptfreq=1e-8,R0_init=0.01,Ivec=1,discrete=FALSE,seed=101,useCpp=TRUE)
-run_sim(nt=1e-8,rptfreq=1e-8,R0_init=0.01,Ivec=1,discrete=FALSE,seed=101,useCpp=FALSE)
-
+test_that("single steps", {
+    ## single infection
+    r1 <- run_sim(nt=1e-8,R0_init=10,Ivec=1,rptfreq=1e-8,discrete=FALSE,seed=101,useCpp=TRUE)
+    expect_equal(c(r1),
+                 structure(list(time = 1e-08, S = 998, I = 2, mean_lbeta = -6.21460809842219, 
+                                sd_lbeta = 0), .Names = c("time", "S", "I", "mean_lbeta", "sd_lbeta")))
+    r2 <- run_sim(nt=1e-8,R0_init=10,Ivec=1,rptfreq=1e-8,discrete=FALSE,seed=101,useCpp=FALSE)
+    expect_equal(c(r1),c(r2))
+    ## single infection plus mutation
+    r3 <- run_sim(nt=1e-8,R0_init=10,Ivec=1,rptfreq=1e-8,mu=1,discrete=FALSE,seed=101,useCpp=TRUE)
+    expect_equal(c(r3),
+         structure(list(time = 1e-08, S = 998, I = 2, mean_lbeta = -6.88334405941115, 
+                        sd_lbeta = 0.668735960988958),
+          .Names = c("time", "S", "I", "mean_lbeta", "sd_lbeta")))
+    r4 <- run_sim(nt=1e-8,R0_init=10,Ivec=1,rptfreq=1e-8,mu=1,discrete=FALSE,seed=101,useCpp=FALSE)
+    expect_equal(c(r4),structure(list(time = 1e-08, S = 998, I = 2, mean_lbeta = -6.61306611533102, 
+    sd_lbeta = 0.398458016908828), .Names = c("time", "S", "I", "mean_lbeta", "sd_lbeta")))
+    ## single recovery
+    expect_message(r5 <- run_sim(nt=1e-8,rptfreq=1e-8,R0_init=0.01,Ivec=1,
+                                 discrete=FALSE,seed=101,useCpp=TRUE),"system went extinct")
+    expect_equal(c(r5),
+                 structure(list(time = 1e-08, S = 1000, I = 0, mean_lbeta = NaN, 
+                  sd_lbeta = NaN), .Names = c("time", "S", "I", "mean_lbeta", "sd_lbeta")))
+    expect_message(r6 <- run_sim(nt=1e-8,rptfreq=1e-8,R0_init=0.01,
+                                Ivec=1,discrete=FALSE,seed=101,useCpp=FALSE),
+                  "system went extinct")
+    expect_equal(c(r5),c(r6))
+})

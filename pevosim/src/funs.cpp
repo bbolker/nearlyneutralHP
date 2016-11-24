@@ -1,5 +1,6 @@
 // http://gallery.rcpp.org/articles/using-the-Rcpp-based-sample-implementation/
 #include <RcppArmadilloExtensions/sample.h>
+#include "pevosim.h"
 // [[Rcpp::depends(RcppArmadillo)]]
 
 using namespace Rcpp;
