@@ -1,7 +1,8 @@
-- deal with runaway parameters; why does it crash?
+
 - max values for parameters (multlogit)
 - tradeoff curves
 - beta+gamma mutation
+
 
 - bimodality: transient effect?
 - track lineage age, ancestry
