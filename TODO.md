@@ -1,6 +1,11 @@
+- deal with runaway parameters; why does it crash?
+- max values for parameters (multlogit)
+- tradeoff curves
+- beta+gamma mutation
+
 - bimodality: transient effect?
-- track lineage age
-- SIRS
+- track lineage age, ancestry
+- SIRS?
 - output distributions
 - alternate mutational models
 - profile
@@ -14,3 +19,8 @@
   diffusion equation with sqrt-N scaling?
 - narrative: bottleneck effects (e.g. Bergstrom, McElhany, Real)
 - boom/bust peak/trough; effective pop size may be small
+
+
+# Batch-processing packages for R
+
+- `batch`: [JSS](http://www.jstatsoft.org/v39/c01/)

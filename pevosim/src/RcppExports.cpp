@@ -19,8 +19,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // get_ratesC
-NumericVector get_ratesC(dvec betavec, dvec gamma, ivec Ivec, int S);
-RcppExport SEXP pevosim_get_ratesC(SEXP betavecSEXP, SEXP gammaSEXP, SEXP IvecSEXP, SEXP SSEXP) {
+NumericVector get_ratesC(dvec betavec, dvec gamma, ivec Ivec, int S, bool& overflow);
+RcppExport SEXP pevosim_get_ratesC(SEXP betavecSEXP, SEXP gammaSEXP, SEXP IvecSEXP, SEXP SSEXP, SEXP overflowSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -28,7 +28,8 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< dvec >::type gamma(gammaSEXP);
     Rcpp::traits::input_parameter< ivec >::type Ivec(IvecSEXP);
     Rcpp::traits::input_parameter< int >::type S(SSEXP);
-    rcpp_result_gen = Rcpp::wrap(get_ratesC(betavec, gamma, Ivec, S));
+    Rcpp::traits::input_parameter< bool& >::type overflow(overflowSEXP);
+    rcpp_result_gen = Rcpp::wrap(get_ratesC(betavec, gamma, Ivec, S, overflow));
     return rcpp_result_gen;
 END_RCPP
 }

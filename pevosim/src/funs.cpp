@@ -1,6 +1,10 @@
 #include <Rcpp.h>
 #include "pevosim.h"
-/* // http://gallery.rcpp.org/articles/using-the-Rcpp-based-sample-implementation/
+#define MAXVAL 1.0e308
+
+
+/*  was using:
+// http://gallery.rcpp.org/articles/using-the-Rcpp-based-sample-implementation/
 */
 
 using namespace Rcpp;
@@ -22,7 +26,8 @@ int mySample(NumericVector rates, double sum_rates) {
 NumericVector get_ratesC(dvec betavec,
 			 dvec gamma,
 			 ivec Ivec,
-			 int S) {
+			 int S,
+			 bool &overflow) {
 
     int nstrains = betavec.size();
 
@@ -30,9 +35,13 @@ NumericVector get_ratesC(dvec betavec,
     dvec inf_rates(nstrains);
     dvec recover_rates(nstrains);
 
+    overflow=false;
     for (int i=0; i<nstrains; i++) {
 	inf_rates[i]=betavec[i]*Ivec[i]*S;
 	recover_rates[i]= gamma[i]*Ivec[i];
+	if (inf_rates[i]>MAXVAL || recover_rates[i]>MAXVAL) {
+	    overflow=true;
+	}
     }
 
     inf_rates.insert(inf_rates.end(), 
@@ -85,14 +94,15 @@ void do_mut2(dvec &ltraitvec,
     double mut_chg = rnorm(1,mut_mean,mut_sd)[0];
     double new_ltrait = orig_ltrait + mut_chg;
 
+    if (debug) {
+	int nstrain=betavec.size();
+	Rprintf("%d/%d %lf %lf %lf %lf\n",
+		strain,nstrain,
+		orig_ltrait,mut_chg,new_trait,exp(new_trait));
+    }
+    
     if (mut_var=="beta") {
 	betavec.push_back(exp(new_ltrait));
-	if (debug) {
-	    int nstrain=betavec.size();
-            Rprintf("%d/%d %lf %lf %lf %lf\n",
-		    strain,nstrain,
-		    orig_beta,mut_chg,new_trait,exp(new_trait));
-	}
 	gamma.push_back(orig_gamma);
     } else {
 	new_trait = orig_gamma + mut_chg;
@@ -163,10 +173,12 @@ void run_stepC(List state,double t_tot, double t_end,
     int nstrain, event, strain, w;
     double r_mut, tot_rates;
     NumericVector rates;
+    bool overflow=false;
 
     while (t_tot<t_end) {
 	nstrain = ltraitvec.size();	
-	rates = get_ratesC(betavec,gamma,Ivec,S);
+	rates = get_ratesC(betavec,gamma,Ivec,S,overflow);
+	if (overflow) break;
 	if (debug) {
 	    Rprintf("t=%lf n=%d S=%d I=%d minrate=%lf maxrate=%lf\n",t_tot,nstrain,
 		    S,Ivec[0]);
@@ -218,6 +230,9 @@ void run_stepC(List state,double t_tot, double t_end,
 	// stopifnot(sum(state$Ivec)+S == N)
     } // loop until end of time period
     if (debug) Rprintf("done\n");
+    if (overflow) {
+	Rf_error("Rate overflow");
+    }
     state["ltraitvec"] = ltraitvec;
     state["Ivec"] = Ivec;
     state["beta"] = betavec;

@@ -1,7 +1,7 @@
 library(pevosim)
 library(qrng)
 fn <- "nn_runs_8.rda"
-nsim <- 10
+nsim <- 100
 ranges <- list(mu=c(-3,-1),
                mut_mean=c(-4,-0.5),
                mut_sd=c(-1,0.5),
@@ -36,5 +36,6 @@ for (i in 1:nrow(ss_df)) {
     cat("done\n")
     save("ss_df","resList",file=fn)
 }
+
 
 

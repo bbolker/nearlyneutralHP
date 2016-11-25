@@ -5,8 +5,8 @@ mySample <- function(rates, sum_rates) {
     .Call('pevosim_mySample', PACKAGE = 'pevosim', rates, sum_rates)
 }
 
-get_ratesC <- function(betavec, gamma, Ivec, S) {
-    .Call('pevosim_get_ratesC', PACKAGE = 'pevosim', betavec, gamma, Ivec, S)
+get_ratesC <- function(betavec, gamma, Ivec, S, overflow) {
+    .Call('pevosim_get_ratesC', PACKAGE = 'pevosim', betavec, gamma, Ivec, S, overflow)
 }
 
 do_extinctC <- function(state, mut_var, extinct) {
