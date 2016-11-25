@@ -1,8 +1,6 @@
 #include <Rcpp.h>
 #include "pevosim.h"
 /* // http://gallery.rcpp.org/articles/using-the-Rcpp-based-sample-implementation/
-// #include <RcppArmadilloExtensions/sample.h>
-// [[Rcpp::depends(RcppArmadillo)]]
 */
 
 using namespace Rcpp;
@@ -166,8 +164,6 @@ void run_stepC(List state,double t_tot, double t_end,
     int nstrain, event, strain, w;
     double r_mut, tot_rates;
     NumericVector rates;
-    // int nrates;
-    // IntegerVector wseq;
 
     while (t_tot<t_end) {
 	nstrain = ltraitvec.size();	
@@ -179,9 +175,6 @@ void run_stepC(List state,double t_tot, double t_end,
 	tot_rates = sum(rates);
 	t_tot += rexp(1,tot_rates)[0];
 	if (debug) Rcout << "rates " << rates << std::endl;
-	// nrates = 2*nstrain;
-	// wseq = seq(1,nrates);
-	// w = RcppArmadillo::sample(wseq, 1, false, rates)[0];
 	w = my_sample(rates, tot_rates);
 	
 	event =  ((w-1) / nstrain) + 1;
