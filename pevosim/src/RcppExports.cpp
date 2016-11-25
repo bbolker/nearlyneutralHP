@@ -2,20 +2,19 @@
 // Generator token: 10BE3573-1514-4C36-9D1C-5A225CD40393
 
 #include "../inst/include/pevosim.h"
-#include <RcppArmadillo.h>
 #include <Rcpp.h>
 
 using namespace Rcpp;
 
-// my_sample
-int my_sample(NumericVector rates, double sum_rates);
-RcppExport SEXP pevosim_my_sample(SEXP ratesSEXP, SEXP sum_ratesSEXP) {
+// mySample
+int mySample(NumericVector rates, double sum_rates);
+RcppExport SEXP pevosim_mySample(SEXP ratesSEXP, SEXP sum_ratesSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< NumericVector >::type rates(ratesSEXP);
     Rcpp::traits::input_parameter< double >::type sum_rates(sum_ratesSEXP);
-    rcpp_result_gen = Rcpp::wrap(my_sample(rates, sum_rates));
+    rcpp_result_gen = Rcpp::wrap(mySample(rates, sum_rates));
     return rcpp_result_gen;
 END_RCPP
 }

@@ -1,5 +1,4 @@
 library(pevosim)
-
 library(qrng)
 fn <- "nn_runs_8.rda"
 nsim <- 10

@@ -9,7 +9,7 @@ typedef std::vector<double> dvec;
 typedef std::vector<int> ivec;
 
 // [[Rcpp::export]]
-int my_sample(NumericVector rates, double sum_rates) {
+int mySample(NumericVector rates, double sum_rates) {
     double val = runif(1)[0]*sum_rates;
     int w=0;
     while(val>=0) {
@@ -105,7 +105,6 @@ void do_mut2(dvec &ltraitvec,
 }
 
 // [[Rcpp::export]]
-
 void do_extinctC(List state,
 		const String mut_var,
 		int extinct) {
@@ -175,7 +174,7 @@ void run_stepC(List state,double t_tot, double t_end,
 	tot_rates = sum(rates);
 	t_tot += rexp(1,tot_rates)[0];
 	if (debug) Rcout << "rates " << rates << std::endl;
-	w = my_sample(rates, tot_rates);
+	w = mySample(rates, tot_rates);
 	
 	event =  ((w-1) / nstrain) + 1;
 	strain = ((w-1) % nstrain); // 0-index!

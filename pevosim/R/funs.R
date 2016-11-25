@@ -1,6 +1,8 @@
 ## going to model logit-beta, for now (lbeta)
 ## can easily switch to another scale
 
+#' @useDynLib pevosim
+#' @importFrom Rcpp evalCpp
 ## params
 ## N: population size
 ## mu: per-infection mutation probability
