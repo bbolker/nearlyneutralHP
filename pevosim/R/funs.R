@@ -86,13 +86,27 @@ run_sim <- function(R0_init=2,  ## >1
                     mut_link=NULL,
                     Ivec=NULL,
                     nt=100000,
-                    rptfreq=min(nt/500,1), ## divides nt?
+                    rptfreq=max(nt/500,1), ## divides nt?
                     discrete=TRUE, ## discrete-time?
                     seed=NULL,
                     progress=FALSE,
                     debug=FALSE,
                     useCpp=FALSE) {
 
+    if (round(N)!=N) {
+        warning("rounding N")
+        N <- round(N)
+    }
+    if (mut_mean>0) {
+        warning("positive mutation bias")
+    }
+    stopifnot(R0_init>0,
+              gamma0>0,
+              N>0,
+              mu>0,
+              mut_sd>0,
+              (nt/rptfreq) %% 1 ==0
+              )
     dfun <- function(lab="") {
         if (debug) {
             cat(lab,"\n")
@@ -261,6 +275,7 @@ run_sim <- function(R0_init=2,  ## >1
             break
         }
     } ## loop over reporting frequencies
+    if (progress) cat("\n")                      
     attr(res,"mut_link") <- mut_link
     return(res)
 }

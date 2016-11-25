@@ -13,7 +13,7 @@ do_extinctC <- function(state, mut_var, extinct) {
     invisible(.Call('pevosim_do_extinctC', PACKAGE = 'pevosim', state, mut_var, extinct))
 }
 
-run_stepC <- function(state, t_tot, t_end, params, debug = TRUE) {
-    invisible(.Call('pevosim_run_stepC', PACKAGE = 'pevosim', state, t_tot, t_end, params, debug))
+run_stepC <- function(state, t_tot, t_end, params, maxrate = 1000, debug = TRUE) {
+    invisible(.Call('pevosim_run_stepC', PACKAGE = 'pevosim', state, t_tot, t_end, params, maxrate, debug))
 }
 

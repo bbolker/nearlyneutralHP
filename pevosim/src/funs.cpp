@@ -141,7 +141,7 @@ void do_extinct2(dvec &mutvec,
 
 // [[Rcpp::export]]
 void run_stepC(List state,double t_tot, double t_end,
-	       List params, bool debug=true) {
+	       List params, double maxrate=1000, bool debug=true) {
 
     if (debug) Rprintf("begin\n");
     dvec ltraitvec = as< dvec >(state["ltraitvec"]);

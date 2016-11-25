@@ -11,7 +11,7 @@ npar <- length(ranges)
 pow10 <- function(x) 10^x
 rpow10 <- function(x) round(10^x)
 inv10 <- function(x) 10^(-x)
-trans <- list(pow10,pow10,pow10,rpow10,inv10)
+trans <- list(pow10,identity,pow10,rpow10,inv10)
 
 ss <- sobol(nsim,npar)
 for (i in 1:npar) {
@@ -21,16 +21,19 @@ for (i in 1:npar) {
 colnames(ss) <- names(ranges)
 ss_df <- data.frame(run=1:nrow(ss),ss)
 resList <- list()
+options(digits=3)
 for (i in 1:nrow(ss_df)) {
     pars <- ss_df[i,-1]
-    cat(c(i,unlist(pars),"\n"))
+    cat(i,paste(names(pars),format(unlist(pars)),sep="="),"\n")
     argList <- c(list(nt=1e7,R0_init=20,seed=101,
                       mut_var="beta",
                       discrete=FALSE,
                       useCpp=TRUE,
-                      progress=TRUE),
+                      progress=TRUE,
+                      debug=FALSE),
                  as.list(pars))
     resList[[i]] <- try(do.call(run_sim,argList))
+    cat("done\n")
     save("ss_df","resList",file=fn)
 }
 

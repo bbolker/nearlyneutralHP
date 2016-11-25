@@ -45,16 +45,17 @@ BEGIN_RCPP
 END_RCPP
 }
 // run_stepC
-void run_stepC(List state, double t_tot, double t_end, List params, bool debug);
-RcppExport SEXP pevosim_run_stepC(SEXP stateSEXP, SEXP t_totSEXP, SEXP t_endSEXP, SEXP paramsSEXP, SEXP debugSEXP) {
+void run_stepC(List state, double t_tot, double t_end, List params, double maxrate, bool debug);
+RcppExport SEXP pevosim_run_stepC(SEXP stateSEXP, SEXP t_totSEXP, SEXP t_endSEXP, SEXP paramsSEXP, SEXP maxrateSEXP, SEXP debugSEXP) {
 BEGIN_RCPP
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< List >::type state(stateSEXP);
     Rcpp::traits::input_parameter< double >::type t_tot(t_totSEXP);
     Rcpp::traits::input_parameter< double >::type t_end(t_endSEXP);
     Rcpp::traits::input_parameter< List >::type params(paramsSEXP);
+    Rcpp::traits::input_parameter< double >::type maxrate(maxrateSEXP);
     Rcpp::traits::input_parameter< bool >::type debug(debugSEXP);
-    run_stepC(state, t_tot, t_end, params, debug);
+    run_stepC(state, t_tot, t_end, params, maxrate, debug);
     return R_NilValue;
 END_RCPP
 }
