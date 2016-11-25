@@ -1,0 +1,16 @@
+Mathematical models of parasite evolution most often use a
+deterministic framework, where the only role of stochasticity is to
+provide raw material for adaptation via mutation. In an attempt to
+consider the diversity of parasite virulence from a broad perspective,
+and in particular to understand the broad range of virulence and the
+large number of low-virulence parasites found in natural communities,
+we explore a range of stochastic, discrete-population models. Our
+models incorporate mutation, drift, and selection; each distinct
+parasite strain differs in transmission, host clearance
+rate/virulence, or both.  In the absence of a virulence-transmission
+tradeoff, we find as expected that parasites are strongly selected for
+increased transmission and decreased virulence, limited only by the
+effects of mutation and drift; smaller host populations have
+lower-transmission/lower-virulence parasites. We also observe a
+bimodal distribution of outcomes depending on the mean and standard
+deviation of the mutational spectrum.
