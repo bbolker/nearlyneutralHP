@@ -1,7 +1,7 @@
 library(pevosim)
 library(qrng)
 fn <- "nn_runs_8.rda"
-nsim <- 100
+nsim <- 1000
 ranges <- list(mu=c(-3,-1),
                mut_mean=c(-4,-0.5),
                mut_sd=c(-1,0.5),
