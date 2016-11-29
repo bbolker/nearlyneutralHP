@@ -37,7 +37,7 @@ do_extinct <- function(state,mut_var,extinct) {
 ##' @param minval minimum value
 ##' @param maxval maximum value
 ##' @export
-multlogit <- function(minval=0,maxval=1) {
+multlogit <- function(minval=0,maxval=1,scale=1) {
     delta <- maxval-minval
     ## R CMD check will always complain about this.
     ## C_logit_link is not otherwise externally accessible.
@@ -66,6 +66,7 @@ multlogit <- function(minval=0,maxval=1) {
 #' @param Ivec initial vector of infected numbers
 #' @param mu mutation probability per replication
 #' @param discrete (logical) run discrete-time sim?
+#' @param dt time step
 #' @param seed random-number seed
 #' @param nt number of time steps
 #' @param rptfreq reporting frequency (should divide nt)
@@ -85,6 +86,7 @@ run_sim <- function(R0_init=2,  ## >1
                     mut_var="beta",
                     mut_link=NULL,
                     Ivec=NULL,
+                    dt=1,
                     nt=100000,
                     rptfreq=max(nt/500,1), ## divides nt?
                     discrete=TRUE, ## discrete-time?
@@ -167,6 +169,7 @@ run_sim <- function(R0_init=2,  ## >1
         ## cat("time ",i,"\n")
         if (discrete) {
             for (j in 1:rptfreq) {
+                for (t0 in seq(round(1/dt))) {
                 ## cat("betavec:",betavec,"\n")
                 ## cat("Ivec:",Ivec,"\n")
                 ## prob of escaping infection completely
@@ -284,8 +287,8 @@ run_sim <- function(R0_init=2,  ## >1
 #' Get rates
 #' @param state list of state vectors
 #' @export
-get_rates <- function(state) {
-    inf_rates <- state$beta*state$Ivec*state$S
-    recover_rates <- state$gamma*state$Ivec
+get_rates <- function(state,dt=1) {
+    inf_rates <- state$beta*state$Ivec*state$S*dt
+    recover_rates <- state$gamma*state$Ivec*dt
     return(c(inf_rates,recover_rates))
 }

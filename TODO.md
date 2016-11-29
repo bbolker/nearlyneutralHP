@@ -2,6 +2,8 @@
 - max values for parameters (multlogit)
 - tradeoff curves
 - beta+gamma mutation
+- cloglog scale for discrete-time; subdivide time scales
+- runaway results?
 
 
 - bimodality: transient effect?
