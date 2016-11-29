@@ -2,7 +2,7 @@
 - max values for parameters (multlogit)
 - tradeoff curves
 - beta+gamma mutation
-
+- switch discrete-time to log-hazard link for beta?
 
 - bimodality: transient effect?
 - track lineage age, ancestry

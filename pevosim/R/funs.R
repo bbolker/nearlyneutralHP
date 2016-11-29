@@ -18,53 +18,156 @@ get_mut <- function(orig_trait,
     } else stop("unknown mut_type")
 }
 
-do_mut <- function(state,mut_var,mut_link,orig_trait,...) {
-    new_trait <- get_mut(orig_trait,...)
-    state[[mut_var]] <- c(state[[mut_var]],mut_link$linkinv(new_trait))
-    state$ltraitvec <- c(state$ltraitvec,new_trait)
-    state$Ivec <- c(state$Ivec,rep(1,length(orig_trait)))
+## For efficiency (??), we keep track of parameters on both
+## the constrained and unconstrained scales ...
+## state:
+## state$beta$constr, state$beta$unconstr,
+##    state$gamma$constr, state$gamma$unconstr
+
+## FIXME: only works on single mutated strains at present
+## allow mut_var to differ (randomly) among strains mutating
+##   at each step ... ?
+
+do_mut2 <- function(state,mut_var,mut_link,strain,mut_mean,mut_sd) {
+
+    ## retrieve original unconstr and constr trait values
+    ## vectorized over which trait(s) and strain(s) are mutating
+    sMap <- function(...) unlist(Map(...))
+    nmut <- length(strain)
+    orig_trait <- sMap(function(t,s) state$traits[[t]]$unconstr[s],
+                       mut_var,strain)
+    orig_trait_constr <- sMap(function(t,s) state$traits[[t]]$constr[s],
+                             mut_var,strain)
+    new_trait <- get_mut(orig_trait,mut_mean,mut_sd)
+    new_trait_constr <- sMap(function(f,o) f$linkinv(o), mut_link, new_trait)
+    for (v in names(state$traits)) {
+        ## set up all traits for new strain
+        ttu <- ifelse(v==mut_var,new_trait,orig_trait)
+        ttc <- ifelse(v==mut_var,new_trait_constr,orig_trait_constr)
+        ## append
+        state$traits[[v]]$unconstr <- c(state$traits[[v]]$unconstr,ttu)
+        state$traits[[v]]$constr <- c(state$traits[[v]]$constr,ttc)
+    }
+    state$Ivec <- c(state$Ivec,rep(1,nmut))
     return(state)
 }
 
-do_extinct <- function(state,mut_var,extinct) {
-    state[[mut_var]] <- state[[mut_var]][-extinct]
-    state$ltraitvec <- state$ltraitvec[-extinct]
-    state$Ivec <- state$Ivec[-extinct]
+## do mutation, allowing for mutation in either trait
+##' @export
+do_mut3 <- function(state,mut_var,mut_link,strain,mut_mean,mut_sd) {
+    if (mut_var=="both") {
+        ## for now, equal probability of beta vs gamma mutation
+        mut_var <- ifelse(runif(length(strain))<0.5,
+                          "beta","gamma")
+    }
+    mm <- if (length(mut_mean)==1) mut_mean else mut_mean[mut_var]
+    ms <- if (length(mut_sd)==1) mut_sd else mut_sd[mut_var]
+    ml <- if (is(mut_link,"link-glm")) list(mut_link) else mut_link[mut_var]
+    state <- do_mut2(state,
+                     mut_var,
+                     ml,
+                     strain,
+                     mut_mean=mm,
+                     mut_sd=ms)
     return(state)
 }
 
-##' Logit transform on (min,max) rather than (0,1)
+##' @export
+do_extinct <- function(state,mut_var,strain) {
+    for (v in names(state$traits)) {
+        for (cc in c("constr","unconstr")) {
+            state$traits[[v]][[c]] <- state$traits[[v]][[c]][-strain]
+        }
+    }
+    state$Ivec <- state$Ivec[-strain]
+    return(state)
+}
+
+##' Logit transform on (min,max) rather than (0,1);
+##' reduces to log transform if max value is unbounded
 ##' @param minval minimum value
 ##' @param maxval maximum value
 ##' @export
 multlogit <- function(minval=0,maxval=1) {
-    delta <- maxval-minval
-    ## R CMD check will always complain about this.
-    ## C_logit_link is not otherwise externally accessible.
-    ##  could write my own ...
-    linkfun <- function(mu) .Call(stats:::C_logit_link, (mu-minval)/delta)
-    linkinv <- function(eta) .Call(stats:::C_logit_linkinv, eta)*delta + minval
-    mu.eta <- function(eta) .Call(stats:::C_logit_mu_eta, eta)*delta
-    valideta <- function(eta) TRUE
-    ## need to be able to find C_logit_mu_eta ...
-    ## environment(linkfun) <- environment(linkinv) <- environment(mu.eta) <- environment(valideta) <- asNamespace("stats")
-    structure(list(linkfun = linkfun, linkinv = linkinv, mu.eta = mu.eta, 
-                   valideta = valideta, name = "multlogit"), class = "link-glm")
+    if (maxval<Inf) {
+        delta <- maxval-minval
+        linkfun <- function(mu) qlogis((mu-minval)/delta)
+        linkinv <- function(eta) plogis(eta)*delta+minval
+    } else {
+        linkfun <- function(mu) log(mu-minval)
+        linkinv <- function(eta) exp(eta)+minval
+    }
+    structure(list(linkfun = linkfun, linkinv = linkinv, name = "multlogit"),
+              class = "link-glm")
+}
+
+##' make link functions for both parameters, based on tradeoff
+##' @export
+make_bilink <- function(tradeoff_fun,tradeoff_pars,
+                        gamma,beta) {
+    if (tradeoff_fun=="powerlaw") {
+        maxbeta <- with(as.list(tradeoff_pars),g1*gamma^(1/g2))
+        mingamma <- with(as.list(tradeoff_pars),(beta/g1)^g2)
+        return(list(beta=multlogit(0,maxbeta),
+                    gamma= multlogit(mingamma,Inf)))
+    } else if (tradeoff_fun=="none") {
+        return(list(beta=make.link("log"),
+                    gamma=make.link("log")))
+    } else stop("unknown tradeoff function")
+}
+
+make_state <- function(gamma,beta,S,
+                       I=rep(1,n),
+                       tradeoff_fun="powerlaw",
+                       tradeoff_pars=c(g1=1,g2=2),
+                       mut_links=make_bilink(tradeoff_fun,
+                                             tradeoff_pars,gamma,beta)) {
+    n <- max(length(gamma),length(beta))
+    gamma <- rep(gamma,length.out=n)
+    beta <- rep(beta,length.out=n)
+    return(list(traits=list(beta=list(constr=beta,
+                                      unconstr=mut_links$link(beta)),
+                            gamma=list(constr=gamma,
+                                      unconstr=mut_links$link(gamma))),
+                I=I,
+                S=S))
+
+                            
+}
+
+check_state <- function (state,N=NA) {
+    ok <- TRUE
+    n <- length(state$traits$beta$constr)
+    ok <- ok && length(state$traits$beta$constr)==n &&
+        length(state$traits$beta$unconstr)==n &&
+        length(state$traits$gamma$constr)==n && 
+        length(state$traits$gamma$unconstr)==n && 
+        length(state$Ivec)==n
+    if (!is.na(N)) {
+        ok <- ok && sum(state$Ivec)+S==N
+    }
+    return(ok)
 }
 
 #' Evolutionary simulations
 #' 
-#' @param R0_init starting value of R0
-#' @param gamma0 recovery rate
-#' @param gamma_max  ?? not used ??
-#' @param N population size
-#' @param mut_type mutation model (only "shift" implemented)
-#' @param mut_mean mean value of mutations
-#' @param mut_sd mutational standard deviations
-#' @param mut_var which variable(s) mutate?
-#' @param mut_link link function for mutation
-#' @param Ivec initial vector of infected numbers
-#' @param mu mutation probability per replication
+#' @param init list
+#' \itemize{
+#' \item R0 (starting value of R0)
+#' \item gamma (recovery rate)
+#' \item Ivec (initial infectives)
+#' }
+#' @param params list
+#' \itemize{
+#' \item N (population size)
+#' \item mu (mutation probability per replication)
+#' \item mut_type mutation model (only "shift" implemented)
+#' \item mut_mean mean value of mutations
+#' \item mut_sd mutational standard deviations
+#' \item mut_var which variable(s) mutate?
+#' \item mut_link link function for mutation
+#' \item tradeoff_pars
+#' }
 #' @param discrete (logical) run discrete-time sim?
 #' @param seed random-number seed
 #' @param nt number of time steps
@@ -74,17 +177,18 @@ multlogit <- function(minval=0,maxval=1) {
 #' @param useCpp (logical) use C++ code for continuous-time models?
 #' @importFrom stats make.link rnorm rbinom rmultinom rexp runif
 #' @export
-run_sim <- function(R0_init=2,  ## >1
-                    gamma0 =1/5,  ## >0
-                    gamma_max = Inf,
-                    N=1000,     ## integer >0
-                    mu=0.01,    ## >0
-                    mut_type="shift",
-                    mut_mean=-1,## <0 (for sensibility)
-                    mut_sd=0.5, ## >0
-                    mut_var="beta",
-                    mut_link=NULL,
-                    Ivec=NULL,
+run_sim <- function(init=list(R0=2, ## >1
+                              gamma=1/5,
+                              Ivec=NULL),  ## >1
+                    params=list(N=1000,     ## integer >0
+                                mu=0.01,    ## >0
+                                mut_type="shift",
+                                mut_mean=-1,## <0 (for sensibility)
+                                mut_sd=0.5, ## >0
+                                mut_var="beta",
+                                mut_link=NULL,
+                                tradeoff_pars=NULL),
+                    tradeoff_fun="powerlaw",
                     nt=100000,
                     rptfreq=max(nt/500,1), ## divides nt?
                     discrete=TRUE, ## discrete-time?
@@ -93,20 +197,21 @@ run_sim <- function(R0_init=2,  ## >1
                     debug=FALSE,
                     useCpp=FALSE) {
 
-    if (round(N)!=N) {
+    if (round(params$N)!=params$N) {
         warning("rounding N")
-        N <- round(N)
+        params$N <- round(params$N)
     }
-    if (mut_mean>0) {
+    if (params$mut_mean>0) {
         warning("positive mutation bias")
     }
-    stopifnot(R0_init>0,
-              gamma0>0,
+    with(as.list(c(init,params)),
+         stopifnot(init$R0>0,
+              gamma>0,
               N>0,
               mu>0,
               mut_sd>0,
               (nt/rptfreq) %% 1 ==0
-              )
+              ))
     dfun <- function(lab="") {
         if (debug) {
             cat(lab,"\n")
@@ -124,30 +229,24 @@ run_sim <- function(R0_init=2,  ## >1
 
     if (!is.null(seed)) set.seed(seed)
 
-    if (is.null(Ivec)) {
+    if (is.null(init$Ivec)) {
         ## start at equilibrium I ...
-        Ivec <- max(1,round(N*(1-1/R0_init)))
+        init$Ivec <- max(1,round(params$N*(1-1/init$R0)))
     }
-    S <- N-sum(Ivec)
+    
 
     ## R0 = beta*N/gamma
-    beta0 <- R0_init*gamma0/N
+    beta0 <- init$R0*init$gamma/N
 
     ## set up initial trait vector
-    if (mut_var=="beta") {
-        if (is.null(mut_link)) {
-            mut_link <- if (discrete) make.link("logit") else make.link("log")
-        }
-        ltraitvec <- mut_link$linkfun(beta0)
-    } else {
-        if (is.null(mut_link)) mut_link <- make.link("log")
-        ltraitvec <- mut_link$linkfun(gamma0)
+    if (tradeoff_fun=="powerlaw") {
+        state <- make_state(init$gamma,init$beta,
+                            params$N-sum(init$Ivec),init$Ivec,
+                            tradeoff_fun=tradeoff_fun,
+                            tradeoff_pars=tradeoff_pars,
+                            mut_links=make_bilink(tradeoff_fun,
+                                                  tradeoff_pars,gamma,beta))
     }
-    ## parameters structure (parallel vectors), so these can
-    ## be modified via function and passed back ...
-    state <- list(beta=beta0,gamma=gamma0,
-                  ltraitvec=ltraitvec,Ivec=Ivec,
-                  S=S)
 
     dfun("init")
     
@@ -158,7 +257,7 @@ run_sim <- function(R0_init=2,  ## >1
     ## qvec <- seq(0,1,length=nq+2)[-c(1,nq+2)]
     res <- as.data.frame(matrix(NA,nrow=nrpt,ncol=5,
                                 dimnames=list(NULL,c("time","S","I",
-                                                     paste0(c("mean_l","sd_l"),mut_var)))))
+                                       paste0(c("mean_l","sd_l"),mut_var)))))
 
     t_tot <- 0  ## for continuous model
 
@@ -167,18 +266,20 @@ run_sim <- function(R0_init=2,  ## >1
         ## cat("time ",i,"\n")
         if (discrete) {
             for (j in 1:rptfreq) {
+                beta <- state$traits$beta$unconstr
+                gamma <- state$traits$gamma$unconstr
                 ## cat("betavec:",betavec,"\n")
                 ## cat("Ivec:",Ivec,"\n")
                 ## prob of escaping infection completely
                 uninf <- rbinom(1,size=state$S,
-                                prob=prod((1-state$beta)^state$Ivec))
+                                prob=prod((1-beta)^state$Ivec))
                 ## division of new infectives among strains
                 ## 'prob' is internally normalized
                 newinf <- drop(rmultinom(1,size=state$S-uninf,
-                                         prob=state$Ivec*state$beta))
+                                         prob=state$Ivec*beta))
                 stopifnot(uninf+sum(newinf)==state$S)
                 recover <- rbinom(length(state$Ivec),
-                                  size=state$Ivec,prob=state$gamma)
+                                  size=state$Ivec,prob=gamma)
                 ## fraction of new infections -> mutation
                 mutated <- rbinom(length(newinf),size=newinf,prob=mu)
                 stopifnot(length(recover)==length(mutated))
@@ -232,7 +333,7 @@ run_sim <- function(R0_init=2,  ## >1
                 debug=debug)
             } else { ## use R
                 while (t_tot<(i+1)*rptfreq) {
-                    nstrain <- length(state$ltraitvec)
+                    nstrain <- length(state$Ivec)
                     rates <- get_rates(state)
                     if (debug) cat(t_tot,rates,"\n")
                     t_tot <- t_tot + rexp(1,sum(rates))
@@ -241,9 +342,9 @@ run_sim <- function(R0_init=2,  ## >1
                     strain <- ((w-1) %% nstrain) + 1
                     if (event==1) { ## infection
                         if (runif(1)<mu) {
-                            state <- do_mut(state,mut_var,
+                            state <- do_mut3(state,mut_var,
                                             mut_link,
-                                            state$ltraitvec[strain],
+                                            strain,
                                             mut_mean,mut_sd)
                         } else {
                             state$Ivec[strain] <- state$Ivec[strain]+1
@@ -285,7 +386,7 @@ run_sim <- function(R0_init=2,  ## >1
 #' @param state list of state vectors
 #' @export
 get_rates <- function(state) {
-    inf_rates <- state$beta*state$Ivec*state$S
-    recover_rates <- state$gamma*state$Ivec
+    inf_rates <- state$traits$beta$unconstr*state$Ivec*state$S
+    recover_rates <- state$traits$gamma$unconstr*state$Ivec
     return(c(inf_rates,recover_rates))
 }

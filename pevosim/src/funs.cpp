@@ -73,7 +73,7 @@ void do_mutC(List state,
 }
 
 // direct mod version 
-void do_mut2(dvec &ltraitvec,
+void do_mut2C(dvec &ltraitvec,
 	     dvec &betavec,
 	     dvec &gamma,
 	     ivec &Ivec,
@@ -197,7 +197,7 @@ void run_stepC(List state,double t_tot, double t_end,
 
 	    if (runif(1)[0]<mu) {
 		if (debug) Rprintf("mutation\n");
-		do_mut2(ltraitvec,
+		do_mut2C(ltraitvec,
 			betavec,
 			gamma,
 			Ivec,
