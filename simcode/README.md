@@ -10,3 +10,4 @@
 # next steps
 
 - `nn8`: Sobol sequence; continuous time/C++
+- `nn9`: like `nn8`, but (oops!) use gamma range from 2-10, **not** 10^2-10^10!
