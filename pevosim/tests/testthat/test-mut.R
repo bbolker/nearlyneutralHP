@@ -1,6 +1,7 @@
 library(testthat)
 library(pevosim)
 
+## multimutation tests
 devtools::load_all("~/projects/nearlyneutralHP/pevosim")
 set.seed(101)
 S0 <- list(traits=list(beta=list(constr=1,unconstr=0),
@@ -18,6 +19,7 @@ check_state(S2)
 S3 <- do_mut3(S2,mut_var="both",mut_link=make.link("log"),strain=1,
               mut_mean=0,mut_sd=1)
 check_state(S3)
+## do more testing of what actually happens
 
 set.seed(101)
 params <- c(g1=1,g2=2)
@@ -39,3 +41,13 @@ environment(mm$gamma$linkinv)$minval
 curve(mm$gamma$linkinv(x),from=-5,to=5)
 curve(mm$beta$linkinv(x),from=-5,to=5)
 
+run_sim(tradeoff_fun="none",debug=TRUE)
+
+## R0 = 2
+## I = 500
+## S = 500
+## beta0 = 2*0.2/1000 = 4e-4
+## beta0*N/gamma = 4e-4*1000/0.2 = 0.4/0.2 = 2 = R0 (check)
+
+##
+## we should really be using cloglog link from beta to p?

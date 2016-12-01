@@ -104,15 +104,24 @@ multlogit <- function(minval=0,maxval=1) {
 ##' make link functions for both parameters, based on tradeoff
 ##' @export
 make_bilink <- function(tradeoff_fun,tradeoff_pars,
-                        gamma,beta) {
+                        gamma,beta,discrete=FALSE) {
     if (tradeoff_fun=="powerlaw") {
         maxbeta <- with(as.list(tradeoff_pars),g1*gamma^(1/g2))
-        mingamma <- with(as.list(tradeoff_pars),(beta/g1)^g2)
+        ## mingamma <- with(as.list(tradeoff_pars),(beta/g1)^g2)
         return(list(beta=multlogit(0,maxbeta),
-                    gamma= multlogit(mingamma,Inf)))
+                    gamma= multlogit(tradeoff_pars["mingamma"],Inf)))
     } else if (tradeoff_fun=="none") {
-        return(list(beta=make.link("log"),
-                    gamma=make.link("log")))
+        if (discrete) {
+            ## version 0: beta constrained 0-1
+            ## (FIXME: allow cloglog link)
+            ## gamma was log, which is a mistake??
+            return(list(beta=make.link("logit"),
+                        gamma=make.link("log")))
+        } else {
+            ## unconstrained; beta, gamma can be any positive value
+            return(list(beta=make.link("log"),
+                        gamma=make.link("log")))
+        }
     } else stop("unknown tradeoff function")
 }
 
@@ -126,9 +135,9 @@ make_state <- function(gamma,beta,S,
     gamma <- rep(gamma,length.out=n)
     beta <- rep(beta,length.out=n)
     return(list(traits=list(beta=list(constr=beta,
-                                      unconstr=mut_links$link(beta)),
+                                      unconstr=mut_links$beta$linkfun(beta)),
                             gamma=list(constr=gamma,
-                                      unconstr=mut_links$link(gamma))),
+                                      unconstr=mut_links$gamma$linkfun(gamma))),
                 I=I,
                 S=S))
 
@@ -234,19 +243,21 @@ run_sim <- function(init=list(R0=2, ## >1
         init$Ivec <- max(1,round(params$N*(1-1/init$R0)))
     }
     
-
     ## R0 = beta*N/gamma
-    beta0 <- init$R0*init$gamma/N
+    ## want
 
+    ## hazard link
+    beta0 <- 1-exp(-init$R0*init$gamma/params$N)
+    ## prod((1-beta0)^init$Ivec)
+    ##
     ## set up initial trait vector
-    if (tradeoff_fun=="powerlaw") {
-        state <- make_state(init$gamma,init$beta,
-                            params$N-sum(init$Ivec),init$Ivec,
-                            tradeoff_fun=tradeoff_fun,
-                            tradeoff_pars=tradeoff_pars,
-                            mut_links=make_bilink(tradeoff_fun,
-                                                  tradeoff_pars,gamma,beta))
-    }
+    state <- make_state(init$gamma,beta0,
+                        params$N-sum(init$Ivec),init$Ivec,
+                        tradeoff_fun=tradeoff_fun,
+                        tradeoff_pars=tradeoff_pars,
+                        mut_links=make_bilink(tradeoff_fun,
+                                              tradeoff_pars,gamma,beta))
+     
 
     dfun("init")
     
@@ -257,7 +268,8 @@ run_sim <- function(init=list(R0=2, ## >1
     ## qvec <- seq(0,1,length=nq+2)[-c(1,nq+2)]
     res <- as.data.frame(matrix(NA,nrow=nrpt,ncol=5,
                                 dimnames=list(NULL,c("time","S","I",
-                                       paste0(c("mean_l","sd_l"),mut_var)))))
+                                       paste0(c("mean_l","sd_l"),
+                                              names(state$traits))))))
 
     t_tot <- 0  ## for continuous model
 
@@ -266,8 +278,8 @@ run_sim <- function(init=list(R0=2, ## >1
         ## cat("time ",i,"\n")
         if (discrete) {
             for (j in 1:rptfreq) {
-                beta <- state$traits$beta$unconstr
-                gamma <- state$traits$gamma$unconstr
+                beta <- state$traits$beta$constr
+                gamma <- state$traits$gamma$constr
                 ## cat("betavec:",betavec,"\n")
                 ## cat("Ivec:",Ivec,"\n")
                 ## prob of escaping infection completely
@@ -365,11 +377,16 @@ run_sim <- function(init=list(R0=2, ## >1
             } ## use R, not Rcpp
         } ## continuous time
         ## summary statistics
-        I_tot <- sum(state$Ivec)
-        ltrait_mean <- sum(state$Ivec*state$ltraitvec)/I_tot
-        ltrait_sd <- sqrt(sum(state$Ivec*(state$ltraitvec-ltrait_mean)^2)/I_tot)
+        res[i,"time"] <- i*rptfreq
+        res[i,"S"] <- state$S
+        res[i,"I"] <- Itot <- sum(state$Ivec)
+        for (tt in names(state$traits)) {
+            res[i,paste0("mean_l",tt)] <- tmean <- 
+                sum(state$Ivec*state$traits[[tt]]$unconstr)/I_tot
+            res[i,paste0("sd_l",tt)] <-
+                sqrt(sum(state$Ivec*(state$traits[[tt]]$unconstr-ltrait_mean)^2)/I_tot)
+        }
         if (progress) cat(".")
-        res[i,] <- c(i*rptfreq,state$S,I_tot,ltrait_mean,ltrait_sd)
         ## DRY ...
         if (all(state$Ivec==0)) {
             message(sprintf("system went extinct prematurely (t=%d)",i))
