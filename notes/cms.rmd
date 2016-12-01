@@ -1,0 +1,70 @@
+---
+title: stochastic evolutionary models
+author: Ben Bolker
+date: 4 December 2016
+bibliography: virulence.bib
+csl: apa.csl
+output:
+  ioslides_presentation
+---
+<!-- 
+apa.csl is a slightly hacked version of APA 
+  (modified for "et al" after 2 authors in text)
+-->
+<!-- .refs is style for reference page (small text) -->
+<style>
+.refs {
+   font-size: 16px;
+}
+h2 { 
+ color: #3399ff;		
+}
+h3 { 
+ color: #3399ff;		
+}
+.title-slide {
+   background-color: #55bbff;
+}
+</style>
+<!--    content: url(https://i.creativecommons.org/l/by-sa/4.0/88x31.png)
+>
+<!-- Limit image width and height -->
+<style type="text/css">
+img {     
+  max-height: 560px;     
+  max-width: 800px; 
+}
+</style>
+
+```{r setup,echo=FALSE,message=FALSE}
+library("ggplot2"); theme_set(theme_classic())
+library("reshape2")
+library("ggExtra")
+library("MASS")
+library("knitr")
+opts_chunk$set(echo=FALSE,fig.width=4,fig.height=4,out.width=400)
+```
+
+# Introduction
+
+## Intro 1
+
+- host-parasite evolution (specifically, evolution of **virulence**)
+- mostly focused on one parasite-one host interactions ...
+- or small-number [@lipsitch_evolution_1996]
+- usually deterministic, but cf. @bergstrom_transmission_1999
+
+## Model formulation
+
+- discrete, finite host population (all identical)
+-
+
+## Mutation models
+
+- shift model (random walk)
+- house of cards
+- Ornstein-Uhlenbeck
+
+## References {.refs}
+
+
