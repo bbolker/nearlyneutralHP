@@ -34,19 +34,17 @@ do_mut2 <- function(state,mut_var,mut_link,strain,mut_mean,mut_sd) {
     ## vectorized over which trait(s) and strain(s) are mutating
     sMap <- function(...) unlist(Map(...))
     nmut <- length(strain)
-    orig_trait <- sMap(function(t,s) state$traits[[t]]$unconstr[s],
-                       mut_var,strain)
-    orig_trait_constr <- sMap(function(t,s) state$traits[[t]]$constr[s],
-                             mut_var,strain)
-    new_trait <- get_mut(orig_trait,mut_mean,mut_sd)
-    new_trait_constr <- sMap(function(f,o) f$linkinv(o), mut_link, new_trait)
-    for (v in names(state$traits)) {
+    for (tt in names(state$traits)) {
+        orig_trait <- state$traits[[tt]]$unconstr[strain]
+        orig_trait_constr <- state$traits[[tt]]$constr[strain]
+        new_trait <- get_mut(orig_trait,mut_mean,mut_sd)
+        new_trait_constr <- sMap(function(f,o) f$linkinv(o), mut_link, new_trait)
         ## set up all traits for new strain
         ttu <- ifelse(v==mut_var,new_trait,orig_trait)
         ttc <- ifelse(v==mut_var,new_trait_constr,orig_trait_constr)
         ## append
-        state$traits[[v]]$unconstr <- c(state$traits[[v]]$unconstr,ttu)
-        state$traits[[v]]$constr <- c(state$traits[[v]]$constr,ttc)
+        state$traits[[tt]]$unconstr <- c(state$traits[[tt]]$unconstr,ttu)
+        state$traits[[tt]]$constr <- c(state$traits[[tt]]$constr,ttc)
     }
     state$Ivec <- c(state$Ivec,rep(1,nmut))
     return(state)
@@ -63,6 +61,13 @@ do_mut3 <- function(state,mut_var,mut_link,strain,mut_mean,mut_sd) {
     mm <- if (length(mut_mean)==1) mut_mean else mut_mean[mut_var]
     ms <- if (length(mut_sd)==1) mut_sd else mut_sd[mut_var]
     ml <- if (is(mut_link,"link-glm")) list(mut_link) else mut_link[mut_var]
+    if ((nstrain <- length(strain))>1) {
+        mut_var <- rep(mut_var,length.out=nstrain)
+        mm <- rep(mm,length.out=nstrain)
+        ms <- rep(ms,length.out=nstrain)
+        ml <- replicate(nstrain,ml)
+    }
+        
     state <- do_mut2(state,
                      mut_var,
                      ml,
@@ -76,7 +81,7 @@ do_mut3 <- function(state,mut_var,mut_link,strain,mut_mean,mut_sd) {
 do_extinct <- function(state,mut_var,strain) {
     for (v in names(state$traits)) {
         for (cc in c("constr","unconstr")) {
-            state$traits[[v]][[c]] <- state$traits[[v]][[c]][-strain]
+            state$traits[[v]][[cc]] <- state$traits[[v]][[cc]][-strain]
         }
     }
     state$Ivec <- state$Ivec[-strain]
@@ -126,7 +131,7 @@ make_bilink <- function(tradeoff_fun,tradeoff_pars,
 }
 
 make_state <- function(gamma,beta,S,
-                       I=rep(1,n),
+                       Ivec=rep(1,n),
                        tradeoff_fun="powerlaw",
                        tradeoff_pars=c(g1=1,g2=2),
                        mut_links=make_bilink(tradeoff_fun,
@@ -138,7 +143,7 @@ make_state <- function(gamma,beta,S,
                                       unconstr=mut_links$beta$linkfun(beta)),
                             gamma=list(constr=gamma,
                                       unconstr=mut_links$gamma$linkfun(gamma))),
-                I=I,
+                Ivec=Ivec,
                 S=S))
 
                             
@@ -197,7 +202,7 @@ run_sim <- function(init=list(R0=2, ## >1
                                 mut_var="beta",
                                 mut_link=NULL,
                                 tradeoff_pars=NULL),
-                    tradeoff_fun="powerlaw",
+                    tradeoff_fun="none",
                     nt=100000,
                     rptfreq=max(nt/500,1), ## divides nt?
                     discrete=TRUE, ## discrete-time?
@@ -246,17 +251,21 @@ run_sim <- function(init=list(R0=2, ## >1
     ## R0 = beta*N/gamma
     ## want
 
-    ## hazard link
-    beta0 <- 1-exp(-init$R0*init$gamma/params$N)
+    ## raw scale, but should be small, rate ~ prob
+    beta0 <- init$R0*init$gamma/params$N
     ## prod((1-beta0)^init$Ivec)
     ##
+    if (is.null(params$mut_link)) {
+        mut_link <- make_bilink(tradeoff_fun,
+                                params$tradeoff_pars,init$gamma,beta0)
+    }
+
     ## set up initial trait vector
     state <- make_state(init$gamma,beta0,
-                        params$N-sum(init$Ivec),init$Ivec,
+                        params$N-sum(init$Ivec),
+                        Ivec=init$Ivec,
                         tradeoff_fun=tradeoff_fun,
-                        tradeoff_pars=tradeoff_pars,
-                        mut_links=make_bilink(tradeoff_fun,
-                                              tradeoff_pars,gamma,beta))
+                        tradeoff_pars=params$tradeoff_pars)
      
 
     dfun("init")
@@ -278,6 +287,8 @@ run_sim <- function(init=list(R0=2, ## >1
         ## cat("time ",i,"\n")
         if (discrete) {
             for (j in 1:rptfreq) {
+                if (i==43 && j==20) browser()
+                nstrain <- length(state$Ivec)
                 beta <- state$traits$beta$constr
                 gamma <- state$traits$gamma$constr
                 ## cat("betavec:",betavec,"\n")
@@ -293,7 +304,7 @@ run_sim <- function(init=list(R0=2, ## >1
                 recover <- rbinom(length(state$Ivec),
                                   size=state$Ivec,prob=gamma)
                 ## fraction of new infections -> mutation
-                mutated <- rbinom(length(newinf),size=newinf,prob=mu)
+                mutated <- rbinom(length(newinf),size=newinf,prob=params$mu)
                 stopifnot(length(recover)==length(mutated))
                 stopifnot(length(newinf)==length(state$Ivec))
                 ## update infectives
@@ -307,13 +318,14 @@ run_sim <- function(init=list(R0=2, ## >1
                 ## now do mutation ...
                 tot_mut <- sum(mutated)
                 if (tot_mut>0) {
-                    state <- do_mut(state,mut_var,
-                                    mut_link,
-                                    orig_trait=rep(state$ltraitvec,mutated),
-                                    mut_mean=mut_mean,
-                                    mut_sd=mut_sd,
-                                    mut_type=mut_type)
+                    state <- do_mut3(state,
+                                     params$mut_var,
+                                     mut_link,
+                                     strain=rep(1:nstrain,mutated),
+                                     mut_mean=params$mut_mean,
+                                     mut_sd=params$mut_sd)
                 }
+                if (discrete && any(state$traits$beta$constr>1)) stop("beta >1")
                 if (all(state$Ivec==0)) {
                     message(sprintf("system went extinct prematurely (t=%d)",i))
                     break
@@ -327,7 +339,7 @@ run_sim <- function(init=list(R0=2, ## >1
                     state$S <- state$S + sum(recover) - sum(newinf)
                 }
                 stopifnot(length(state$S)==1)
-                stopifnot(sum(state$Ivec)+state$S == N)
+                stopifnot(sum(state$Ivec)+state$S == params$N)
             }  ## rptfreq time steps
         } else  ## end discrete case
         {
@@ -379,12 +391,12 @@ run_sim <- function(init=list(R0=2, ## >1
         ## summary statistics
         res[i,"time"] <- i*rptfreq
         res[i,"S"] <- state$S
-        res[i,"I"] <- Itot <- sum(state$Ivec)
+        res[i,"I"] <- I_tot <- sum(state$Ivec)
         for (tt in names(state$traits)) {
             res[i,paste0("mean_l",tt)] <- tmean <- 
                 sum(state$Ivec*state$traits[[tt]]$unconstr)/I_tot
             res[i,paste0("sd_l",tt)] <-
-                sqrt(sum(state$Ivec*(state$traits[[tt]]$unconstr-ltrait_mean)^2)/I_tot)
+                sqrt(sum(state$Ivec*(state$traits[[tt]]$unconstr-tmean)^2)/I_tot)
         }
         if (progress) cat(".")
         ## DRY ...
