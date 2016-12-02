@@ -4,34 +4,38 @@
 \alias{run_sim}
 \title{Evolutionary simulations}
 \usage{
-run_sim(R0_init = 2, gamma0 = 1/5, gamma_max = Inf, N = 1000,
-  mu = 0.01, mut_type = "shift", mut_mean = -1, mut_sd = 0.5,
-  mut_var = "beta", mut_link = NULL, Ivec = NULL, nt = 1e+05,
+run_sim(inits = list(R0 = 2, gamma = 1/5, Ivec = NULL), mod_inits = list(),
+  params = list(N = 1000, mu = 0.01, mut_type = "shift", mut_mean = -1, mut_sd
+  = 0.5, mut_var = "beta", mut_link = NULL, tradeoff_pars = NULL),
+  mod_params = list(), tradeoff_fun = "none", nt = 1e+05,
   rptfreq = max(nt/500, 1), discrete = TRUE, seed = NULL,
   progress = FALSE, debug = FALSE, useCpp = FALSE)
 }
 \arguments{
-\item{R0_init}{starting value of R0}
+\item{inits}{list
+\itemize{
+\item R0 (starting value of R0)
+\item gamma (recovery rate)
+\item Ivec (initial infectives)
+}}
 
-\item{gamma0}{recovery rate}
+\item{mod_inits}{list of initial values to modify}
 
-\item{gamma_max}{?? not used ??}
+\item{params}{list: default values
+\itemize{
+\item N=1000 (population size)
+\item mu (mutation probability per replication)
+\item mut_type mutation model (only "shift" implemented)
+\item mut_mean mean value of mutations
+\item mut_sd mutational standard deviations
+\item mut_var which variable(s) mutate?
+\item mut_link link function for mutation
+\item tradeoff_pars
+}}
 
-\item{N}{population size}
+\item{mod_params}{list of parameters to modify}
 
-\item{mu}{mutation probability per replication}
-
-\item{mut_type}{mutation model (only "shift" implemented)}
-
-\item{mut_mean}{mean value of mutations}
-
-\item{mut_sd}{mutational standard deviations}
-
-\item{mut_var}{which variable(s) mutate?}
-
-\item{mut_link}{link function for mutation}
-
-\item{Ivec}{initial vector of infected numbers}
+\item{tradeoff_fun}{tradeoff function, "powerlaw" or "none"}
 
 \item{nt}{number of time steps}
 

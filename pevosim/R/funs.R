@@ -40,8 +40,8 @@ do_mut2 <- function(state,mut_var,mut_link,strain,mut_mean,mut_sd) {
         new_trait <- get_mut(orig_trait,mut_mean,mut_sd)
         new_trait_constr <- sMap(function(f,o) f$linkinv(o), mut_link, new_trait)
         ## set up all traits for new strain
-        ttu <- ifelse(v==mut_var,new_trait,orig_trait)
-        ttc <- ifelse(v==mut_var,new_trait_constr,orig_trait_constr)
+        ttu <- ifelse(tt==mut_var,new_trait,orig_trait)
+        ttc <- ifelse(tt==mut_var,new_trait_constr,orig_trait_constr)
         ## append
         state$traits[[tt]]$unconstr <- c(state$traits[[tt]]$unconstr,ttu)
         state$traits[[tt]]$constr <- c(state$traits[[tt]]$constr,ttc)
@@ -50,7 +50,12 @@ do_mut2 <- function(state,mut_var,mut_link,strain,mut_mean,mut_sd) {
     return(state)
 }
 
-## do mutation, allowing for mutation in either trait
+##' do mutation, allowing for mutation in either trait
+##' @param state state list
+##' @param mut_var which variable mutates
+##' @param mut_link link/inv link function for traits
+##' @param mut_mean mutation bias
+##' @param mut_sd mutation SD
 ##' @export
 do_mut3 <- function(state,mut_var,mut_link,strain,mut_mean,mut_sd) {
     if (mut_var=="both") {
@@ -77,8 +82,11 @@ do_mut3 <- function(state,mut_var,mut_link,strain,mut_mean,mut_sd) {
     return(state)
 }
 
+##' process extinction (remove zero-density strains)
+##' @param state state list
+##' @param strain indices of strain(s) that went extinct
 ##' @export
-do_extinct <- function(state,mut_var,strain) {
+do_extinct <- function(state,strain) {
     for (v in names(state$traits)) {
         for (cc in c("constr","unconstr")) {
             state$traits[[v]][[cc]] <- state$traits[[v]][[cc]][-strain]
@@ -107,6 +115,11 @@ multlogit <- function(minval=0,maxval=1) {
 }
 
 ##' make link functions for both parameters, based on tradeoff
+##' @param tradeoff_fun string: "powerlaw" or "none"
+##' @param tradeoff_pars listof parameters for tradeoff curve (g1, g2 = scale and curvature of power law)
+##' @param gamma value of gamma
+##' @param beta value of beta
+##' @param discrete (logical)
 ##' @export
 make_bilink <- function(tradeoff_fun,tradeoff_pars,
                         gamma,beta,discrete=FALSE) {
@@ -134,8 +147,7 @@ make_state <- function(gamma,beta,S,
                        Ivec=rep(1,n),
                        tradeoff_fun="powerlaw",
                        tradeoff_pars=c(g1=1,g2=2),
-                       mut_links=make_bilink(tradeoff_fun,
-                                             tradeoff_pars,gamma,beta)) {
+                       mut_links=NULL) {
     n <- max(length(gamma),length(beta))
     gamma <- rep(gamma,length.out=n)
     beta <- rep(beta,length.out=n)
@@ -165,15 +177,16 @@ check_state <- function (state,N=NA) {
 
 #' Evolutionary simulations
 #' 
-#' @param init list
+#' @param inits list
 #' \itemize{
 #' \item R0 (starting value of R0)
 #' \item gamma (recovery rate)
 #' \item Ivec (initial infectives)
 #' }
-#' @param params list
+#' @param mod_inits list of initial values to modify
+#' @param params list: default values
 #' \itemize{
-#' \item N (population size)
+#' \item N=1000 (population size)
 #' \item mu (mutation probability per replication)
 #' \item mut_type mutation model (only "shift" implemented)
 #' \item mut_mean mean value of mutations
@@ -182,7 +195,10 @@ check_state <- function (state,N=NA) {
 #' \item mut_link link function for mutation
 #' \item tradeoff_pars
 #' }
+#' @param mod_params list of parameters to modify
+## FIXME: do this by storing default value list in environment?? 
 #' @param discrete (logical) run discrete-time sim?
+#' @param tradeoff_fun tradeoff function, "powerlaw" or "none"
 #' @param seed random-number seed
 #' @param nt number of time steps
 #' @param rptfreq reporting frequency (should divide nt)
@@ -190,10 +206,12 @@ check_state <- function (state,N=NA) {
 #' @param debug (logical) debugging output?
 #' @param useCpp (logical) use C++ code for continuous-time models?
 #' @importFrom stats make.link rnorm rbinom rmultinom rexp runif
+#' @importFrom utils modifyList
 #' @export
-run_sim <- function(init=list(R0=2, ## >1
+run_sim <- function(inits=list(R0=2, ## >1
                               gamma=1/5,
-                              Ivec=NULL),  ## >1
+                              Ivec=NULL),
+                    mod_inits=list(),
                     params=list(N=1000,     ## integer >0
                                 mu=0.01,    ## >0
                                 mut_type="shift",
@@ -202,6 +220,7 @@ run_sim <- function(init=list(R0=2, ## >1
                                 mut_var="beta",
                                 mut_link=NULL,
                                 tradeoff_pars=NULL),
+                    mod_params=list(),
                     tradeoff_fun="none",
                     nt=100000,
                     rptfreq=max(nt/500,1), ## divides nt?
@@ -211,6 +230,13 @@ run_sim <- function(init=list(R0=2, ## >1
                     debug=FALSE,
                     useCpp=FALSE) {
 
+    if (length(mod_params)>0) {
+        params <- modifyList(params,mod_params)
+    }
+    if (length(mod_inits)>0) {
+        inits <- modifyList(inits,mod_inits)
+    }
+
     if (round(params$N)!=params$N) {
         warning("rounding N")
         params$N <- round(params$N)
@@ -218,8 +244,8 @@ run_sim <- function(init=list(R0=2, ## >1
     if (params$mut_mean>0) {
         warning("positive mutation bias")
     }
-    with(as.list(c(init,params)),
-         stopifnot(init$R0>0,
+    with(as.list(c(inits,params)),
+         stopifnot(inits$R0>0,
               gamma>0,
               N>0,
               mu>0,
@@ -243,29 +269,31 @@ run_sim <- function(init=list(R0=2, ## >1
 
     if (!is.null(seed)) set.seed(seed)
 
-    if (is.null(init$Ivec)) {
+    if (is.null(inits$Ivec)) {
         ## start at equilibrium I ...
-        init$Ivec <- max(1,round(params$N*(1-1/init$R0)))
+        inits$Ivec <- max(1,round(params$N*(1-1/inits$R0)))
     }
     
     ## R0 = beta*N/gamma
     ## want
 
     ## raw scale, but should be small, rate ~ prob
-    beta0 <- init$R0*init$gamma/params$N
-    ## prod((1-beta0)^init$Ivec)
+    beta0 <- inits$R0*inits$gamma/params$N
+    ## prod((1-beta0)^inits$Ivec)
     ##
-    if (is.null(params$mut_link)) {
+    if (is.null(mut_link <- params$mut_link)) {
         mut_link <- make_bilink(tradeoff_fun,
-                                params$tradeoff_pars,init$gamma,beta0)
+                                params$tradeoff_pars,inits$gamma,beta0,
+                                discrete=discrete)
     }
 
     ## set up initial trait vector
-    state <- make_state(init$gamma,beta0,
-                        params$N-sum(init$Ivec),
-                        Ivec=init$Ivec,
+    state <- make_state(inits$gamma,beta0,
+                        params$N-sum(inits$Ivec),
+                        Ivec=inits$Ivec,
                         tradeoff_fun=tradeoff_fun,
-                        tradeoff_pars=params$tradeoff_pars)
+                        tradeoff_pars=params$tradeoff_pars,
+                        mut_link=mut_link)
      
 
     dfun("init")
@@ -287,7 +315,7 @@ run_sim <- function(init=list(R0=2, ## >1
         ## cat("time ",i,"\n")
         if (discrete) {
             for (j in 1:rptfreq) {
-                if (i==43 && j==20) browser()
+                ## if (i==43 && j==20) browser()
                 nstrain <- length(state$Ivec)
                 beta <- state$traits$beta$constr
                 gamma <- state$traits$gamma$constr
@@ -331,7 +359,7 @@ run_sim <- function(init=list(R0=2, ## >1
                     break
                 }
                 if (length(extinct <- which(state$Ivec==0))>0) {
-                    state <- do_extinct(state,mut_var,extinct)
+                    state <- do_extinct(state,extinct)
                 }
                 dfun("after mutation")
                 if (length(state$Ivec)>0) {
@@ -365,11 +393,13 @@ run_sim <- function(init=list(R0=2, ## >1
                     event <-  ((w-1) %/% nstrain) + 1
                     strain <- ((w-1) %% nstrain) + 1
                     if (event==1) { ## infection
-                        if (runif(1)<mu) {
-                            state <- do_mut3(state,mut_var,
-                                            mut_link,
-                                            strain,
-                                            mut_mean,mut_sd)
+                        if (runif(1)<params$mu) {
+                            state <- do_mut3(state,
+                                             params$mut_var,
+                                             mut_link,
+                                             strain,
+                                             mut_mean=params$mut_mean,
+                                             mut_sd=params$mut_sd)
                         } else {
                             state$Ivec[strain] <- state$Ivec[strain]+1
                         }
@@ -380,11 +410,11 @@ run_sim <- function(init=list(R0=2, ## >1
                         state$Ivec[strain] <- state$Ivec[strain]-1
                         state$S <- state$S+1
                         if (state$Ivec[strain]==0) {
-                            state <- do_extinct(state,mut_var,strain)
+                            state <- do_extinct(state,strain)
                         }
                     }
                     stopifnot(length(state$S)==1)
-                    stopifnot(sum(state$Ivec)+state$S == N)
+                    stopifnot(sum(state$Ivec)+state$S == params$N)
                 } ## loop until end of time period
             } ## use R, not Rcpp
         } ## continuous time
@@ -415,7 +445,7 @@ run_sim <- function(init=list(R0=2, ## >1
 #' @param state list of state vectors
 #' @export
 get_rates <- function(state) {
-    inf_rates <- state$traits$beta$unconstr*state$Ivec*state$S
-    recover_rates <- state$traits$gamma$unconstr*state$Ivec
+    inf_rates <- state$traits$beta$constr*state$Ivec*state$S
+    recover_rates <- state$traits$gamma$constr*state$Ivec
     return(c(inf_rates,recover_rates))
 }

@@ -2,7 +2,8 @@
 % Please edit documentation in R/funs.R
 \name{multlogit}
 \alias{multlogit}
-\title{Logit transform on (min,max) rather than (0,1)}
+\title{Logit transform on (min,max) rather than (0,1);
+reduces to log transform if max value is unbounded}
 \usage{
 multlogit(minval = 0, maxval = 1)
 }
@@ -12,6 +13,7 @@ multlogit(minval = 0, maxval = 1)
 \item{maxval}{maximum value}
 }
 \description{
-Logit transform on (min,max) rather than (0,1)
+Logit transform on (min,max) rather than (0,1);
+reduces to log transform if max value is unbounded
 }
 
