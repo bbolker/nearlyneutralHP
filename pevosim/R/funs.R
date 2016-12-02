@@ -169,7 +169,6 @@ run_sim <- function(R0_init=2,  ## >1
         ## cat("time ",i,"\n")
         if (discrete) {
             for (j in 1:rptfreq) {
-                for (t0 in seq(round(1/dt))) {
                 ## cat("betavec:",betavec,"\n")
                 ## cat("Ivec:",Ivec,"\n")
                 ## prob of escaping infection completely
