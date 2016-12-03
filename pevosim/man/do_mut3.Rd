@@ -13,6 +13,8 @@ do_mut3(state, mut_var, mut_link, strain, mut_mean, mut_sd)
 
 \item{mut_link}{link/inv link function for traits}
 
+\item{strain}{which strain(s) are mutating?}
+
 \item{mut_mean}{mutation bias}
 
 \item{mut_sd}{mutation SD}

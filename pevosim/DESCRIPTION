@@ -6,7 +6,7 @@ Description: Stochastic simulations of evolutionary dynamics of parasites.
 Depends:
     R (>= 3.2.3)
 LinkingTo: Rcpp
-Imports: Rcpp
+Imports: Rcpp, methods
 Suggests: testthat
 License: GPL-3
 Encoding: UTF-8

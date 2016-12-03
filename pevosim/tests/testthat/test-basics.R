@@ -55,10 +55,14 @@ test_that("continuous", {
     res4 <- run_sim(nt=100,rptfreq=10,seed=101,
                     discrete=FALSE)
     expect_equal(c(res4[10,]),
-      structure(list(time = 100, S = 448, I = 552, mean_lbeta = -7.67002068293029, 
-    sd_lbeta = 0.243834439173978), .Names = c("time", "S", "I", 
-"mean_lbeta", "sd_lbeta")))
-})
+       structure(list(time = 100, S = 530, I = 470, mean_lbeta = -7.84816042333075, 
+    sd_lgamma = 0, sd_lbeta = 0.161542358510724, mean_lgamma = -1.6094379124341), .Names = c("time", 
+"S", "I", "mean_lbeta", "sd_lgamma", "sd_lbeta", "mean_lgamma"
+)))
+##       structure(list(time = 100, S = 448, I = 552, mean_lbeta = -7.67002068293029, 
+##    sd_lbeta = 0.243834439173978), .Names = c("time", "S", "I", 
+##"mean_lbeta", "sd_lbeta")))
+    })
 
 if (FALSE) {
     t1A <- system.time(res1A <- run_sim(nt=1e4,rptfreq=10,seed=101,progress=TRUE))

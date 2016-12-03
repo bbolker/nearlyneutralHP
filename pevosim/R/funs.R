@@ -1,6 +1,5 @@
 ## going to model logit-beta, for now (lbeta)
 ## can easily switch to another scale
-
 #' @useDynLib pevosim
 #' @importFrom Rcpp evalCpp
 ## params
@@ -54,8 +53,10 @@ do_mut2 <- function(state,mut_var,mut_link,strain,mut_mean,mut_sd) {
 ##' @param state state list
 ##' @param mut_var which variable mutates
 ##' @param mut_link link/inv link function for traits
+##' @param strain which strain(s) are mutating?
 ##' @param mut_mean mutation bias
 ##' @param mut_sd mutation SD
+##' @importFrom methods is
 ##' @export
 do_mut3 <- function(state,mut_var,mut_link,strain,mut_mean,mut_sd) {
     if (mut_var=="both") {
@@ -100,6 +101,7 @@ do_extinct <- function(state,strain) {
 ##' reduces to log transform if max value is unbounded
 ##' @param minval minimum value
 ##' @param maxval maximum value
+##' @importFrom stats plogis qlogis
 ##' @export
 multlogit <- function(minval=0,maxval=1) {
     if (maxval<Inf) {
@@ -170,7 +172,7 @@ check_state <- function (state,N=NA) {
         length(state$traits$gamma$unconstr)==n && 
         length(state$Ivec)==n
     if (!is.na(N)) {
-        ok <- ok && sum(state$Ivec)+S==N
+        ok <- ok && sum(state$Ivec)+state$S==N
     }
     return(ok)
 }
@@ -244,14 +246,13 @@ run_sim <- function(inits=list(R0=2, ## >1
     if (params$mut_mean>0) {
         warning("positive mutation bias")
     }
-    with(as.list(c(inits,params)),
-         stopifnot(inits$R0>0,
-              gamma>0,
-              N>0,
-              mu>0,
-              mut_sd>0,
+    stopifnot(inits$R0>0,
+              inits$gamma>0,
+              params$N>0,
+              params$mu>0,
+              params$mut_sd>0,
               (nt/rptfreq) %% 1 ==0
-              ))
+              )
     dfun <- function(lab="") {
         if (debug) {
             cat(lab,"\n")
@@ -293,7 +294,7 @@ run_sim <- function(inits=list(R0=2, ## >1
                         Ivec=inits$Ivec,
                         tradeoff_fun=tradeoff_fun,
                         tradeoff_pars=params$tradeoff_pars,
-                        mut_link=mut_link)
+                        mut_links=mut_link)
      
 
     dfun("init")
@@ -377,10 +378,10 @@ run_sim <- function(inits=list(R0=2, ## >1
                 run_stepC(state,
                           (i-1)*rptfreq,
                           i*rptfreq,
-                params=list(mu=mu,
-                            mut_sd=mut_sd,
-                            mut_mean=mut_mean,
-                            mut_var=mut_var,
+                params=list(mu=params$mu,
+                            mut_sd=params$mut_sd,
+                            mut_mean=params$mut_mean,
+                            mut_var=params$mut_var,
                             mut_link=""), ## FIXME
                 debug=debug)
             } else { ## use R
