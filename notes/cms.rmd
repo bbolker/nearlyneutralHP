@@ -151,6 +151,8 @@ gg0 <- ggplot(dd,aes(time,val,colour=type))+geom_line()+
 print(gg0 + scale_colour_brewer(palette="Set1"))
 ```
 
+Parameters: $\gamma=1/5$, $\mu=0.01$, $b=-1$, $\sigma=0.5$
+
 ## Results 2<br>$N=1000$, varying time step
 
 ```{r get_res2,fig.width=8,out.width=800}
@@ -168,12 +170,18 @@ gg1 <- ggplot(dd2,aes(time,val,
 print(gg1)
 ```
 
-## Population size
+## Population size ($t=10^5$)
 
-```{r get_res3}
+```{r get_res3,cache=TRUE}
 rL <- setNames(sizeList,sprintf("N=%d",sizevec))
 dd3 <- collect_res(rL) %>%
     filter(var=="mean_lbeta")
+rL2 <- setNames(csizeList,sprintf("N=%d",sizevec))
+dd3C <- collect_res(rL2) %>%
+    filter(var=="mean_lbeta")
+```
+
+```{r plot_res3,warning=FALSE}
 gg3 <- ggplot(dd3,aes(time,val,
                       group=type,
                       colour=as.numeric(factor(type,levels=names(rL)))))+
@@ -189,6 +197,9 @@ print(gg3)
 ```{r get_res4}
 dd4 <- dd3 %>% filter(time>50000) %>%
     mutate(N=as.numeric(gsub("N=","",type)))
+dd4C <- dd3C %>% filter(time>50000) %>%
+    mutate(N=as.numeric(gsub("N=","",type)))
+dd4comb <- bind_rows(disc=dd4,cont=dd4C,.id="time_type")
 gg4 <- ggplot(dd4,
               aes(x=N,y=val,group=type,
                       colour=as.numeric(factor(type,levels=names(rL)))))+
@@ -200,11 +211,28 @@ gg4 <- ggplot(dd4,
 print(gg4)
 ```
 
+## Discrete vs continuous time
+
+```{r disccont}
+gg5 <- ggplot(dd4comb,
+              aes(x=N,y=val,group=interaction(type,time_type),
+                  shape=time_type,
+                  colour=as.numeric(factor(type,levels=names(rL)))))+
+    stat_summary(fun.data=mean_cl_normal)+
+    scale_color_viridis(name="",breaks=seq_along(names(rL)),
+                        labels=names(rL))+
+    labs(y="mean_lbeta")+
+    scale_x_log10()
+print(gg5)
+```
+
 ## Effective population size
 
 - between-host bottlenecks
 - historical fluctuations
-- boom-and-bust/seasonal fluctuations
+(e.g. human $N_e$ is $<10,000$)
+- boom-and-bust/seasonal fluctuations in SIRS models
+(e.g. critical community size)
 
 ## Next steps
 
@@ -213,10 +241,9 @@ mutational bias & variance
 - mutation+drift+tradeoff curves
     - effect of tradeoff
 	- effect of tradeoff shape
-- continuous/analytical approximations
-(computation and insight)
+- continuous/analytical approximations  
+(for computation and insight)
 - non-competing ensembles, host properties, ...
-
 
 ## References {.refs .columns-2}
 
