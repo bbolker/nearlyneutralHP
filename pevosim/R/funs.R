@@ -116,6 +116,21 @@ multlogit <- function(minval=0,maxval=1) {
               class = "link-glm")
 }
 
+multcloglog <- function(minval=0,maxval=1,dt=1) {
+    if (maxval<Inf) {
+        delta <- maxval-minval
+        linkfun <- function(mu) log(-log(1-(mu-minval)/delta)/dt)
+        linkinv <- function(eta) pmax(pmin(-expm1(-exp(eta)*dt),
+                           1 - .Machine$double.eps),
+                           .Machine$double.eps)*delta+minval
+    } else {
+        linkfun <- function(mu) log(mu/dt-minval)
+        linkinv <- function(eta) exp(eta)/dt+minval
+    }
+    structure(list(linkfun = linkfun, linkinv = linkinv, name = "multcloglog"),
+              class = "link-glm")
+}
+
 ##' make link functions for both parameters, based on tradeoff
 ##' @param tradeoff_fun string: "powerlaw" or "none"
 ##' @param tradeoff_pars listof parameters for tradeoff curve (g1, g2 = scale and curvature of power law)
@@ -124,14 +139,16 @@ multlogit <- function(minval=0,maxval=1) {
 ##' @param discrete (logical)
 ##' @export
 make_bilink <- function(tradeoff_fun,tradeoff_pars,
-                        gamma,beta,discrete=FALSE) {
+                        gamma,beta,discrete=FALSE,
+                        hazard=FALSE,
+                        dt=1) {
     if (tradeoff_fun=="powerlaw") {
         maxbeta <- with(as.list(tradeoff_pars),g1*gamma^(1/g2))
         ## mingamma <- with(as.list(tradeoff_pars),(beta/g1)^g2)
         return(list(beta=multlogit(0,maxbeta),
-                    gamma= multlogit(tradeoff_pars["mingamma"],Inf)))
+                    gamma=multlogit(tradeoff_pars["mingamma"],Inf)))
     } else if (tradeoff_fun=="none") {
-        if (discrete) {
+        if (discrete && !hazard) {
             ## version 0: beta constrained 0-1
             ## (FIXME: allow cloglog link)
             ## gamma was log, which is a mistake??
@@ -203,6 +220,7 @@ check_state <- function (state,N=NA) {
 #' @param tradeoff_fun tradeoff function, "powerlaw" or "none"
 #' @param seed random-number seed
 #' @param nt number of time steps
+#' @param dt within-step granularity
 #' @param rptfreq reporting frequency (should divide nt)
 #' @param progress draw progress bar?
 #' @param debug (logical) debugging output?
@@ -225,13 +243,19 @@ run_sim <- function(inits=list(R0=2, ## >1
                     mod_params=list(),
                     tradeoff_fun="none",
                     nt=100000,
+                    dt=1,
+                    use_hazard=FALSE,
                     rptfreq=max(nt/500,1), ## divides nt?
                     discrete=TRUE, ## discrete-time?
+                    hazard=FALSE,
                     seed=NULL,
                     progress=FALSE,
                     debug=FALSE,
                     useCpp=FALSE) {
 
+    if (discrete && !hazard && dt!=1) {
+        warning("probs not adjusted for dt!=1 ...")
+    }
     if (length(mod_params)>0) {
         params <- modifyList(params,mod_params)
     }
@@ -285,7 +309,9 @@ run_sim <- function(inits=list(R0=2, ## >1
     if (is.null(mut_link <- params$mut_link)) {
         mut_link <- make_bilink(tradeoff_fun,
                                 params$tradeoff_pars,inits$gamma,beta0,
-                                discrete=discrete)
+                                discrete=discrete,
+                                hazard=hazard,
+                                dt=1)
     }
 
     ## set up initial trait vector
@@ -311,11 +337,13 @@ run_sim <- function(inits=list(R0=2, ## >1
 
     t_tot <- 0  ## for continuous model
 
+    t_steps <- round(1/dt)
 
     for (i in 1:nrpt) {
         ## cat("time ",i,"\n")
         if (discrete) {
             for (j in 1:rptfreq) {
+                for (tstp in 1:t_steps) {
                 ## if (i==43 && j==20) browser()
                 nstrain <- length(state$Ivec)
                 beta <- state$traits$beta$constr
@@ -323,15 +351,19 @@ run_sim <- function(inits=list(R0=2, ## >1
                 ## cat("betavec:",betavec,"\n")
                 ## cat("Ivec:",Ivec,"\n")
                 ## prob of escaping infection completely
+                infprob <- if (hazard) 1-exp(-beta*dt) else beta
                 uninf <- rbinom(1,size=state$S,
-                                prob=prod((1-beta)^state$Ivec))
+                                prob=prod((1-infprob)^state$Ivec))
                 ## division of new infectives among strains
                 ## 'prob' is internally normalized
-                newinf <- drop(rmultinom(1,size=state$S-uninf,
-                                         prob=state$Ivec*beta))
-                stopifnot(uninf+sum(newinf)==state$S)
+                if (state$S-uninf>0) {
+                  newinf <- drop(rmultinom(1,size=state$S-uninf,
+                                         prob=state$Ivec*infprob))
+                } else newinf <- rep(0,length(state$Ivec))
+                  stopifnot(uninf+sum(newinf)==state$S)
+                recprob <- if (hazard) 1-exp(-gamma*dt) else gamma
                 recover <- rbinom(length(state$Ivec),
-                                  size=state$Ivec,prob=gamma)
+                                  size=state$Ivec,prob=recprob)
                 ## fraction of new infections -> mutation
                 mutated <- rbinom(length(newinf),size=newinf,prob=params$mu)
                 stopifnot(length(recover)==length(mutated))
@@ -354,7 +386,8 @@ run_sim <- function(inits=list(R0=2, ## >1
                                      mut_mean=params$mut_mean,
                                      mut_sd=params$mut_sd)
                 }
-                if (discrete && any(state$traits$beta$constr>1)) stop("beta >1")
+                if (discrete && !hazard &&
+                    any(state$traits$beta$constr>1)) stop("beta >1")
                 if (all(state$Ivec==0)) {
                     message(sprintf("system went extinct prematurely (t=%d)",i))
                     break
@@ -369,6 +402,7 @@ run_sim <- function(inits=list(R0=2, ## >1
                 }
                 stopifnot(length(state$S)==1)
                 stopifnot(sum(state$Ivec)+state$S == params$N)
+                } ## intermed time steps
             }  ## rptfreq time steps
         } else  ## end discrete case
         {
@@ -414,6 +448,7 @@ run_sim <- function(inits=list(R0=2, ## >1
                             state <- do_extinct(state,strain)
                         }
                     }
+                    if (sum(state$Ivec)==0) break
                     stopifnot(length(state$S)==1)
                     stopifnot(sum(state$Ivec)+state$S == params$N)
                 } ## loop until end of time period

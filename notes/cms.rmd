@@ -1,12 +1,16 @@
 ---
-title: stochastic evolutionary models
+title: stochastic evolutionary models of host-parasite community evolution
 author: Ben Bolker
 date: 4 December 2016
 bibliography: virulence.bib
-csl: apa.csl
 output:
-  ioslides_presentation
+  ioslides_presentation:
+     mathjax: local
+     self_contained: false
+csl: reflist2.csl
 ---
+<!-- mathjax:local (under ioslides) self-contained: false (standalone) for pres. version -->
+
 <!-- 
 apa.csl is a slightly hacked version of APA 
   (modified for "et al" after 2 authors in text)
@@ -14,7 +18,7 @@ apa.csl is a slightly hacked version of APA
 <!-- .refs is style for reference page (small text) -->
 <style>
 .refs {
-   font-size: 16px;
+   font-size: 14px;
 }
 h2 { 
  color: #3399ff;		
@@ -26,44 +30,193 @@ h3 {
    background-color: #55bbff;
 }
 </style>
-<!--    content: url(https://i.creativecommons.org/l/by-sa/4.0/88x31.png)
->
-<!-- Limit image width and height -->
-<style type="text/css">
-img {     
-  max-height: 560px;     
-  max-width: 800px; 
-}
-</style>
+<!--    content: url(https://i.creativecommons.org/l/by-sa/4.0/88x31.png) -->
 
 ```{r setup,echo=FALSE,message=FALSE}
-library("ggplot2"); theme_set(theme_classic())
 library("reshape2")
 library("ggExtra")
 library("MASS")
 library("knitr")
-opts_chunk$set(echo=FALSE,fig.width=4,fig.height=4,out.width=400)
+library("tidyr")
+library("dplyr")
+library("viridis")
+library("ggplot2"); theme_set(theme_bw())
+opts_chunk$set(echo=FALSE,fig.width=6,fig.height=4,out.width=600)
 ```
 
 # Introduction
 
-## Intro 1
+## Evolution of virulence
 
-- host-parasite evolution (specifically, evolution of **virulence**)
-- mostly focused on one parasite-one host interactions ...
-- or small-number [@lipsitch_evolution_1996]
-- usually deterministic, but cf. @bergstrom_transmission_1999
+- why are (some) diseases bad?
+- evolution of virulence
+- standard approaches
+    - tradeoff theory [@alizon_virulence_2009]
+    - SIR models and extensions
+- augmented ODEs:
+	- *Price equation* [@day_virulence_2004;@alizon_price_2009]
+	- moment equations [@birch_evolutionary_2015]
+- mostly considers one parasite-one host interactions ...
+
+## From host-parasite pairs to communities
+
+- many, many parasites coexist [@larsen_blood_2016]
+- (in complex host communities)
+- interested in the variation in the whole community
+- commensals to rhinoviruses to SARS
+
+## Stochasticity in virulence evolution
+
+- mutation
+    - affects mean via bias and within-host effects  
+[@bonhoeffer_mutation_1994]
+    - affects variance, distribution
+	- moment equations, PDEs, etc. [@birch_evolutionary_2015]
+- drift (effects of discreteness)
+    - rarely considered, but cf. @bergstrom_transmission_1999
+
+# Modeling
 
 ## Model formulation
 
 - discrete, finite host population (all identical)
--
+- no co-/superinfection; no within-host dynamics	 
+- SIS model
+- discrete parasite strains
+- state of the system: $S,\{I_i,\beta_i,\gamma_i\}$
+     - uninfected individuals become infected  
+ by strain $i$ at rate $\beta_i S$
+	 - infected individuals recover at rate $\gamma_i$
 
-## Mutation models
+## Continuous/discrete-time
 
-- shift model (random walk)
-- house of cards
-- Ornstein-Uhlenbeck
+- Continuous time: Gillespie algorithm
+- Discrete time: binomial/multinomial samples
+     - infection: $\textrm{Binomial}(p=1-\prod (1-\beta_i)^{I_i},S)$
+	 - prob of infection by strain $i$: $\beta_i I_i/(\sum_j \beta_j I_j)$
+	 - recovery of strain $i$: $\textrm{Binomial}(p=\gamma_i,I_i)$
 
-## References {.refs}
+## Mutation
+
+- mutation models
+    - shift model (random walk):  
+$\beta' = \beta + N(b,\sigma)$ ($b<0$)
+    - "house of cards":  
+$\beta' = N(m,\sigma)$
+	- Ornstein-Uhlenbeck:  
+$\beta' = \beta + \alpha (m-\beta) + N(b,\sigma)$
+- infection rate must be $>0$ or $\in [0,1]$  
+(depending on model):  
+use *link function* to allow unconstrained RW  
+(e.g. log, log-hazard, log-odds)
+
+## Discreteness/finite population size
+
+- Simplest to model as explicitly discrete process
+- or, diffusion models with:
+    - absorbing boundary at 0
+    - *demographic stochasticity*:  
+added noise term scaled by $1/\sqrt{N}$  
+(e.g. @lande_risks_1993)
+
+## Model structure
+
+- continuous population, $\beta$, $\gamma$:  
+diffusion model
+- discretize $\{\beta,\gamma\}$ space:
+discrete-jump mutation
+- continuous $\{\beta, \gamma\}$, discrete $I$:  
+branching process  
+(compartmental model with changing dimension)
+
+# Results (a few)
+
+```{r get_res1}
+collect_res <- function(res_list,type_names=names(res_list)) {
+    rL <- lapply(res_list,gather,key=var,value=val,-time) %>%
+    setNames(type_names) %>% bind_rows(.id="type")
+    return(rL)
+}
+load("../simdata/nn11.rda")
+dd <- collect_res(setNames(list(res1A,res1B,res1C,res1D),
+             c("disc","cont","disc_hazard","disc_hazard2"))) %>%
+    filter(!grepl("(^S$|_lgamma$)",var))
+```
+
+## Results 1 ($N=1000$)
+
+```{r plot_res1,fig.width=8,out.width=800}
+gg0 <- ggplot(dd,aes(time,val,colour=type))+geom_line()+
+    facet_wrap(~var,scale="free")
+print(gg0 + scale_colour_brewer(palette="Set1"))
+```
+
+## Results 2<br>$N=1000$, varying time step
+
+```{r get_res2,fig.width=8,out.width=800}
+rL <- setNames(c(hazdtList,list(res1B)),
+                     c(sprintf("tsteps=%d",round(1/hazdtvec)),
+                       "continuous"))
+dd2 <- collect_res(rL) %>%
+    filter(!grepl("(^S$|_lgamma$)",var))
+gg1 <- ggplot(dd2,aes(time,val,
+                      group=type,
+                      colour=as.numeric(factor(type,levels=names(rL)))))+
+            geom_line()+
+    facet_wrap(~var,scale="free")+
+    scale_color_viridis(name="",labels=names(rL))
+print(gg1)
+```
+
+## Population size
+
+```{r get_res3}
+rL <- setNames(sizeList,sprintf("N=%d",sizevec))
+dd3 <- collect_res(rL) %>%
+    filter(var=="mean_lbeta")
+gg3 <- ggplot(dd3,aes(time,val,
+                      group=type,
+                      colour=as.numeric(factor(type,levels=names(rL)))))+
+            geom_line()+
+    scale_color_viridis(name="",breaks=seq_along(names(rL)),
+                        labels=names(rL))+
+    labs(y="mean_lbeta")
+print(gg3)
+```
+
+## Population size (summary)
+
+```{r get_res4}
+dd4 <- dd3 %>% filter(time>50000) %>%
+    mutate(N=as.numeric(gsub("N=","",type)))
+gg4 <- ggplot(dd4,
+              aes(x=N,y=val,group=type,
+                      colour=as.numeric(factor(type,levels=names(rL)))))+
+    stat_summary(fun.data=mean_cl_normal)+
+    scale_color_viridis(name="",breaks=seq_along(names(rL)),
+                        labels=names(rL))+
+    labs(y="mean_lbeta")+
+    scale_x_log10()
+print(gg4)
+```
+
+## Effective population size
+
+- between-host bottlenecks
+- historical fluctuations
+- boom-and-bust/seasonal fluctuations
+
+## Next steps
+
+- explore parameters further:
+mutational bias & variance
+- mutation+drift+tradeoff curves
+    - effect of tradeoff
+	- effect of tradeoff shape
+- continuous/analytical approximations
+(computation and insight)
+- non-competing ensembles, host properties, ...
+
+
+## References {.refs .columns-2}
 

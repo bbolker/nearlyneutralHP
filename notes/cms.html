@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>stochastic evolutionary models of host-parasite community evolution</title>
+
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="chrome=1">
+  <meta name="generator" content="pandoc" />
+
+
+
+
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+
+  <link rel="stylesheet" media="all" href="cms_files/ioslides-13.5.1/fonts/fonts.css">
+
+  <link rel="stylesheet" media="all" href="cms_files/ioslides-13.5.1/theme/css/default.css">
+  <link rel="stylesheet" media="only screen and (max-device-width: 480px)" href="cms_files/ioslides-13.5.1/theme/css/phone.css">
+
+  <base target="_blank">
+
+  <script type="text/javascript">
+    var SLIDE_CONFIG = {
+      // Slide settings
+      settings: {
+                title: 'stochastic evolutionary models of host-parasite community evolution',
+                        useBuilds: true,
+        usePrettify: true,
+        enableSlideAreas: true,
+        enableTouch: true,
+                      },
+
+      // Author information
+      presenters: [
+            {
+        name:  'Ben Bolker' ,
+        company: '',
+        gplus: '',
+        twitter: '',
+        www: '',
+        github: ''
+      },
+            ]
+    };
+  </script>
+
+  <style type="text/css">
+
+    b, strong {
+      font-weight: bold;
+    }
+
+    em {
+      font-style: italic;
+    }
+
+    slides > slide {
+      -webkit-transition: all 0.4s ease-in-out;
+      -moz-transition: all 0.4s ease-in-out;
+      -o-transition: all 0.4s ease-in-out;
+      transition: all 0.4s ease-in-out;
+    }
+
+    .auto-fadein {
+      -webkit-transition: opacity 0.6s ease-in;
+      -webkit-transition-delay: 0.4s;
+      -moz-transition: opacity 0.6s ease-in 0.4s;
+      -o-transition: opacity 0.6s ease-in 0.4s;
+      transition: opacity 0.6s ease-in 0.4s;
+      opacity: 0;
+    }
+
+  </style>
+
+
+</head>
+
+<body style="opacity: 0">
+
+<slides>
+
+  <slide class="title-slide segue nobackground">
+        <!-- The content of this hgroup is replaced programmatically through the slide_config.json. -->
+    <hgroup class="auto-fadein">
+      <h1 data-config-title><!-- populated from slide_config.json --></h1>
+      <h2 data-config-subtitle><!-- populated from slide_config.json --></h2>
+      <p data-config-presenter><!-- populated from slide_config.json --></p>
+            <p style="margin-top: 6px; margin-left: -2px;">4 December 2016</p>
+          </hgroup>
+  </slide>
+
+<!-- mathjax:local (under ioslides) self-contained: false (standalone) for pres. version -->
+
+<!-- 
+apa.csl is a slightly hacked version of APA 
+  (modified for "et al" after 2 authors in text)
+-->
+
+<!-- .refs is style for reference page (small text) -->
+
+<style>
+.refs {
+   font-size: 14px;
+}
+h2 { 
+ color: #3399ff;        
+}
+h3 { 
+ color: #3399ff;        
+}
+.title-slide {
+   background-color: #55bbff;
+}
+</style>
+
+<!--    content: url(https://i.creativecommons.org/l/by-sa/4.0/88x31.png) -->
+
+<slide class='segue dark nobackground level1'><hgroup class = 'auto-fadein'><h2>Introduction</h2></hgroup><article  id="introduction">
+
+</article></slide><slide class=''><hgroup><h2>Evolution of virulence</h2></hgroup><article  id="evolution-of-virulence">
+
+<ul>
+<li>why are (some) diseases bad?</li>
+<li>evolution of virulence</li>
+<li>standard approaches
+
+<ul>
+<li>tradeoff theory <span class="cite">(Alizon et al. 2009)</span></li>
+<li>SIR models and extensions</li>
+</ul></li>
+<li>augmented ODEs:
+
+<ul>
+<li><em>Price equation</em> <span class="cite">(Day et al. 2004; Alizon 2009)</span></li>
+<li>moment equations <span class="cite">(Birch et al. 2015)</span></li>
+</ul></li>
+<li>mostly considers one parasite-one host interactions &#8230;</li>
+</ul>
+
+</article></slide><slide class=''><hgroup><h2>From host-parasite pairs to communities</h2></hgroup><article  id="from-host-parasite-pairs-to-communities">
+
+<ul>
+<li>many, many parasites coexist <span class="cite">(Larsen et al. 2016)</span></li>
+<li>(in complex host communities)</li>
+<li>interested in the variation in the whole community</li>
+<li>commensals to rhinoviruses to SARS</li>
+</ul>
+
+</article></slide><slide class=''><hgroup><h2>Stochasticity in virulence evolution</h2></hgroup><article  id="stochasticity-in-virulence-evolution">
+
+<ul>
+<li>mutation
+
+<ul>
+<li>affects mean via bias and within-host effects<br/><span class="cite">(Bonhoeffer et al. 1994)</span></li>
+<li>affects variance, distribution</li>
+<li>moment equations, PDEs, etc. <span class="cite">(Birch et al. 2015)</span></li>
+</ul></li>
+<li>drift (effects of discreteness)
+
+<ul>
+<li>rarely considered, but cf. <span class="cite">Bergstrom et al. (1999)</span></li>
+</ul></li>
+</ul>
+
+</article></slide><slide class='segue dark nobackground level1'><hgroup class = 'auto-fadein'><h2>Modeling</h2></hgroup><article  id="modeling">
+
+</article></slide><slide class=''><hgroup><h2>Model formulation</h2></hgroup><article  id="model-formulation">
+
+<ul>
+<li>discrete, finite host population (all identical)</li>
+<li>no co-/superinfection; no within-host dynamics<br/></li>
+<li>SIS model</li>
+<li>discrete parasite strains</li>
+<li>state of the system: \(S,\{I_i,\beta_i,\gamma_i\}\)
+
+<ul>
+<li>uninfected individuals become infected<br/>by strain \(i\) at rate \(\beta_i S\)</li>
+<li>infected individuals recover at rate \(\gamma_i\)</li>
+</ul></li>
+</ul>
+
+</article></slide><slide class=''><hgroup><h2>Continuous/discrete-time</h2></hgroup><article  id="continuousdiscrete-time">
+
+<ul>
+<li>Continuous time: Gillespie algorithm</li>
+<li>Discrete time: binomial/multinomial samples
+
+<ul>
+<li>infection: \(\textrm{Binomial}(p=1-\prod (1-\beta_i)^{I_i},S)\)</li>
+<li>prob of infection by strain \(i\): \(\beta_i I_i/(\sum_j \beta_j I_j)\)</li>
+<li>recovery of strain \(i\): \(\textrm{Binomial}(p=\gamma_i,I_i)\)</li>
+</ul></li>
+</ul>
+
+</article></slide><slide class=''><hgroup><h2>Mutation</h2></hgroup><article  id="mutation">
+
+<ul>
+<li>mutation models
+
+<ul>
+<li>shift model (random walk):<br/>\(\beta&#39; = \beta + N(b,\sigma)\) (\(b&lt;0\))</li>
+<li>&quot;house of cards&quot;:<br/>\(\beta&#39; = N(m,\sigma)\)</li>
+<li>Ornstein-Uhlenbeck:<br/>\(\beta&#39; = \beta + \alpha (m-\beta) + N(b,\sigma)\)</li>
+</ul></li>
+<li>infection rate must be \(&gt;0\) or \(\in [0,1]\)<br/>(depending on model):<br/>use <em>link function</em> to allow unconstrained RW<br/>(e.g. log, log-hazard, log-odds)</li>
+</ul>
+
+</article></slide><slide class=''><hgroup><h2>Discreteness/finite population size</h2></hgroup><article  id="discretenessfinite-population-size">
+
+<ul>
+<li>Simplest to model as explicitly discrete process</li>
+<li>or, diffusion models with:
+
+<ul>
+<li>absorbing boundary at 0</li>
+<li><em>demographic stochasticity</em>:<br/>added noise term scaled by \(1/\sqrt{N}\)<br/>(e.g. <span class="cite">Lande (1993)</span>)</li>
+</ul></li>
+</ul>
+
+</article></slide><slide class=''><hgroup><h2>Model structure</h2></hgroup><article  id="model-structure">
+
+<ul>
+<li>continuous population, \(\beta\), \(\gamma\):<br/>diffusion model</li>
+<li>discretize \(\{\beta,\gamma\}\) space: discrete-jump mutation</li>
+<li>continuous \(\{\beta, \gamma\}\), discrete \(I\):<br/>branching process<br/>(compartmental model with changing dimension)</li>
+</ul>
+
+</article></slide><slide class='segue dark nobackground level1'><hgroup class = 'auto-fadein'><h2>Results (a few)</h2></hgroup><article  id="results-a-few">
+
+</article></slide><slide class=''><hgroup><h2>Results 1 (\(N=1000\))</h2></hgroup><article  id="results-1-n1000">
+
+<p><img src="cms_files/figure-html/plot_res1-1.png" width="800" /></p>
+
+</article></slide><slide class=''><hgroup><h2>Results 2<br>\(N=1000\), varying time step</h2></hgroup><article  id="results-2-n1000-varying-time-step">
+
+<p><img src="cms_files/figure-html/get_res2-1.png" width="800" /></p>
+
+</article></slide><slide class=''><hgroup><h2>Population size</h2></hgroup><article  id="population-size">
+
+<p><img src="cms_files/figure-html/get_res3-1.png" width="600" /></p>
+
+</article></slide><slide class=''><hgroup><h2>Population size (summary)</h2></hgroup><article  id="population-size-summary">
+
+<p><img src="cms_files/figure-html/get_res4-1.png" width="600" /></p>
+
+</article></slide><slide class=''><hgroup><h2>Effective population size</h2></hgroup><article  id="effective-population-size">
+
+<ul>
+<li>between-host bottlenecks</li>
+<li>historical fluctuations</li>
+<li>boom-and-bust/seasonal fluctuations</li>
+</ul>
+
+</article></slide><slide class=''><hgroup><h2>Next steps</h2></hgroup><article  id="next-steps">
+
+<ul>
+<li>explore parameters further: mutational bias &amp; variance</li>
+<li>mutation+drift+tradeoff curves
+
+<ul>
+<li>effect of tradeoff</li>
+<li>effect of tradeoff shape</li>
+</ul></li>
+<li>continuous/analytical approximations (computation and insight)</li>
+<li>non-competing ensembles, host properties, &#8230;</li>
+</ul>
+
+</article></slide><slide class=''><hgroup><h2>References</h2></hgroup><article  id="references" class="unnumbered refs columns-2">
+
+<div id="refs" class="references">
+<div id="ref-alizon_price_2009">
+<p>Alizon, S. 2009. <em>Journal of Evolutionary Biology</em> 22 (5) (May): 1123–1132. doi:<a href='https://doi.org/10.1111/j.1420-9101.2009.01726.x' title=''>10.1111/j.1420-9101.2009.01726.x</a>. <a href='http://onlinelibrary.wiley.com/doi/10.1111/j.1420-9101.2009.01726.x/abstract' title=''>http://onlinelibrary.wiley.com/doi/10.1111/j.1420-9101.2009.01726.x/abstract</a>.</p></div>
+
+<div id="ref-alizon_virulence_2009">
+<p>Alizon, S et al. 2009. <em>J. Evol. Biol.</em> 22 (February): 245–259. doi:<a href='https://doi.org/10.1111/j.1420-9101.2008.01658.x' title=''>10.1111/j.1420-9101.2008.01658.x</a>.</p></div>
+
+<div id="ref-bergstrom_transmission_1999">
+<p>Bergstrom, CT et al. 1999. <em>PNAS</em> 96 (9) (April): 5095–5100. doi:<a href='https://doi.org/10.1073/pnas.96.9.5095' title=''>10.1073/pnas.96.9.5095</a>. <a href='http://www.pnas.org/content/96/9/5095' title=''>http://www.pnas.org/content/96/9/5095</a>.</p></div>
+
+<div id="ref-birch_evolutionary_2015">
+<p>Birch, M et al. 2015. <em>Bulletin of Mathematical Biology</em> 77: 1985–2003. doi:<a href='https://doi.org/10.1007/s11538-015-0112-6' title=''>10.1007/s11538-015-0112-6</a>.</p></div>
+
+<div id="ref-bonhoeffer_mutation_1994">
+<p>Bonhoeffer, S et al. 1994. <em>Proceedings: Biological Sciences</em> 258 (1352): 133–140. <a href='http://www.jstor.org/stable/49987' title=''>http://www.jstor.org/stable/49987</a>.</p></div>
+
+<div id="ref-day_virulence_2004">
+<p>Day, T et al. 2004. <em>The American Naturalist</em> 163 (4) (April): E40–E63. doi:<a href='https://doi.org/10.1086/382548' title=''>10.1086/382548</a>. <a href='http://www.jstor.org/stable/10.1086/382548' title=''>http://www.jstor.org/stable/10.1086/382548</a>.</p></div>
+
+<div id="ref-lande_risks_1993">
+<p>Lande, R. 1993. <em>The American Naturalist</em> 142 (6) (December): 911–927. <a href='http://www.jstor.org/stable/2462690' title=''>http://www.jstor.org/stable/2462690</a>.</p></div>
+
+<div id="ref-larsen_blood_2016">
+<p>Larsen, PA et al. 2016. <em>Biology Letters</em> 12 (1) (January): 20150829. doi:<a href='https://doi.org/10.1098/rsbl.2015.0829' title=''>10.1098/rsbl.2015.0829</a>.</p></div></div></article></slide>
+
+
+  <slide class="backdrop"></slide>
+
+</slides>
+
+<script src="cms_files/ioslides-13.5.1/js/modernizr.custom.45394.js"></script>
+<script src="cms_files/ioslides-13.5.1/js/prettify/prettify.js"></script>
+<script src="cms_files/ioslides-13.5.1/js/prettify/lang-r.js"></script>
+<script src="cms_files/ioslides-13.5.1/js/prettify/lang-yaml.js"></script>
+<script src="cms_files/ioslides-13.5.1/js/hammer.js"></script>
+<script src="cms_files/ioslides-13.5.1/js/slide-controller.js"></script>
+<script src="cms_files/ioslides-13.5.1/js/slide-deck.js"></script>
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "cms_files/mathjax-local/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+<!-- map slide visiblity events into shiny -->
+<script>
+  (function() {
+    if (window.jQuery) {
+       window.jQuery(document).on('slideleave', function(e) {
+         window.jQuery(e.target).trigger('hidden');
+      });
+       window.jQuery(document).on('slideenter', function(e) {
+         window.jQuery(e.target).trigger('shown');
+      });
+    }
+  })();
+</script>
+
+</body>
+</html>
