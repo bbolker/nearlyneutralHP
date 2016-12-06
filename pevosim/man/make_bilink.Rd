@@ -4,7 +4,8 @@
 \alias{make_bilink}
 \title{make link functions for both parameters, based on tradeoff}
 \usage{
-make_bilink(tradeoff_fun, tradeoff_pars, gamma, beta, discrete = FALSE)
+make_bilink(tradeoff_fun, tradeoff_pars, gamma, beta, discrete = FALSE,
+  hazard = FALSE)
 }
 \arguments{
 \item{tradeoff_fun}{string: "powerlaw" or "none"}
@@ -16,6 +17,8 @@ make_bilink(tradeoff_fun, tradeoff_pars, gamma, beta, discrete = FALSE)
 \item{beta}{value of beta}
 
 \item{discrete}{(logical)}
+
+\item{hazard}{parameterize events by hazard?}
 }
 \description{
 make link functions for both parameters, based on tradeoff

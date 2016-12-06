@@ -73,7 +73,8 @@ do_mut3 <- function(state,mut_var,mut_link,strain,mut_mean,mut_sd) {
         ms <- rep(ms,length.out=nstrain)
         ml <- replicate(nstrain,ml)
     }
-        
+    ## switch sign of mutation bias for gamma
+    mm <- ifelse(mut_var=="gamma",-mm,mm)
     state <- do_mut2(state,
                      mut_var,
                      ml,
@@ -116,32 +117,18 @@ multlogit <- function(minval=0,maxval=1) {
               class = "link-glm")
 }
 
-multcloglog <- function(minval=0,maxval=1,dt=1) {
-    if (maxval<Inf) {
-        delta <- maxval-minval
-        linkfun <- function(mu) log(-log(1-(mu-minval)/delta)/dt)
-        linkinv <- function(eta) pmax(pmin(-expm1(-exp(eta)*dt),
-                           1 - .Machine$double.eps),
-                           .Machine$double.eps)*delta+minval
-    } else {
-        linkfun <- function(mu) log(mu/dt-minval)
-        linkinv <- function(eta) exp(eta)/dt+minval
-    }
-    structure(list(linkfun = linkfun, linkinv = linkinv, name = "multcloglog"),
-              class = "link-glm")
-}
 
 ##' make link functions for both parameters, based on tradeoff
 ##' @param tradeoff_fun string: "powerlaw" or "none"
 ##' @param tradeoff_pars listof parameters for tradeoff curve (g1, g2 = scale and curvature of power law)
+##' @param hazard parameterize events by hazard?
 ##' @param gamma value of gamma
 ##' @param beta value of beta
 ##' @param discrete (logical)
 ##' @export
 make_bilink <- function(tradeoff_fun,tradeoff_pars,
                         gamma,beta,discrete=FALSE,
-                        hazard=FALSE,
-                        dt=1) {
+                        hazard=FALSE) {
     if (tradeoff_fun=="powerlaw") {
         maxbeta <- with(as.list(tradeoff_pars),g1*gamma^(1/g2))
         ## mingamma <- with(as.list(tradeoff_pars),(beta/g1)^g2)
@@ -150,10 +137,8 @@ make_bilink <- function(tradeoff_fun,tradeoff_pars,
     } else if (tradeoff_fun=="none") {
         if (discrete && !hazard) {
             ## version 0: beta constrained 0-1
-            ## (FIXME: allow cloglog link)
-            ## gamma was log, which is a mistake??
             return(list(beta=make.link("logit"),
-                        gamma=make.link("log")))
+                        gamma=make.link("logit")))
         } else {
             ## unconstrained; beta, gamma can be any positive value
             return(list(beta=make.link("log"),
@@ -176,8 +161,6 @@ make_state <- function(gamma,beta,S,
                                       unconstr=mut_links$gamma$linkfun(gamma))),
                 Ivec=Ivec,
                 S=S))
-
-                            
 }
 
 check_state <- function (state,N=NA) {
@@ -221,6 +204,7 @@ check_state <- function (state,N=NA) {
 #' @param seed random-number seed
 #' @param nt number of time steps
 #' @param dt within-step granularity
+#' @param hazard parameterize events by hazard? (allows time-step cutting in discrete-time models)
 #' @param rptfreq reporting frequency (should divide nt)
 #' @param progress draw progress bar?
 #' @param debug (logical) debugging output?
@@ -244,7 +228,6 @@ run_sim <- function(inits=list(R0=2, ## >1
                     tradeoff_fun="none",
                     nt=100000,
                     dt=1,
-                    use_hazard=FALSE,
                     rptfreq=max(nt/500,1), ## divides nt?
                     discrete=TRUE, ## discrete-time?
                     hazard=FALSE,
@@ -310,8 +293,7 @@ run_sim <- function(inits=list(R0=2, ## >1
         mut_link <- make_bilink(tradeoff_fun,
                                 params$tradeoff_pars,inits$gamma,beta0,
                                 discrete=discrete,
-                                hazard=hazard,
-                                dt=1)
+                                hazard=hazard)
     }
 
     ## set up initial trait vector
@@ -330,16 +312,18 @@ run_sim <- function(inits=list(R0=2, ## >1
     ##  distribution over time
     ## nq <- 9
     ## qvec <- seq(0,1,length=nq+2)[-c(1,nq+2)]
-    res <- as.data.frame(matrix(NA,nrow=nrpt,ncol=5,
+    tnames <- c(outer(c("mean_l","sd_l"),names(state$traits),paste0))
+    res <- as.data.frame(matrix(NA,nrow=nrpt,ncol=8,
                                 dimnames=list(NULL,c("time","S","I",
-                                       paste0(c("mean_l","sd_l"),
-                                              names(state$traits))))))
+                                                    tnames,
+                                                    "n_events"))))
 
     t_tot <- 0  ## for continuous model
 
     t_steps <- round(1/dt)
 
     for (i in 1:nrpt) {
+        n_events <- 0
         ## cat("time ",i,"\n")
         if (discrete) {
             for (j in 1:rptfreq) {
@@ -354,16 +338,18 @@ run_sim <- function(inits=list(R0=2, ## >1
                 infprob <- if (hazard) 1-exp(-beta*dt) else beta
                 uninf <- rbinom(1,size=state$S,
                                 prob=prod((1-infprob)^state$Ivec))
+                n_events <- n_events + (state$S-uninf)
                 ## division of new infectives among strains
                 ## 'prob' is internally normalized
                 if (state$S-uninf>0) {
                   newinf <- drop(rmultinom(1,size=state$S-uninf,
                                          prob=state$Ivec*infprob))
                 } else newinf <- rep(0,length(state$Ivec))
-                  stopifnot(uninf+sum(newinf)==state$S)
+                stopifnot(uninf+sum(newinf)==state$S)
                 recprob <- if (hazard) 1-exp(-gamma*dt) else gamma
                 recover <- rbinom(length(state$Ivec),
                                   size=state$Ivec,prob=recprob)
+                n_events <- n_events+sum(recover)
                 ## fraction of new infections -> mutation
                 mutated <- rbinom(length(newinf),size=newinf,prob=params$mu)
                 stopifnot(length(recover)==length(mutated))
@@ -448,6 +434,7 @@ run_sim <- function(inits=list(R0=2, ## >1
                             state <- do_extinct(state,strain)
                         }
                     }
+                    n_events <- n_events+1
                     if (sum(state$Ivec)==0) break
                     stopifnot(length(state$S)==1)
                     stopifnot(sum(state$Ivec)+state$S == params$N)
@@ -464,6 +451,7 @@ run_sim <- function(inits=list(R0=2, ## >1
             res[i,paste0("sd_l",tt)] <-
                 sqrt(sum(state$Ivec*(state$traits[[tt]]$unconstr-tmean)^2)/I_tot)
         }
+        res[i,"n_events"] <- n_events
         if (progress) cat(".")
         ## DRY ...
         if (all(state$Ivec==0)) {

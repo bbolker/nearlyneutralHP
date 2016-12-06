@@ -1,4 +1,11 @@
 
+- discrete vs continuous time:
+   - numbers of events per time step in output
+   - keep shortening time, comparing
+   - more unit tests
+- switch mutation bias for gamma (or switch link function and operate on infectious period?)
+- report R0 
+
 - max values for parameters (multlogit)
 - tradeoff curves
 - beta+gamma mutation

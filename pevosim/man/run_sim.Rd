@@ -7,9 +7,9 @@
 run_sim(inits = list(R0 = 2, gamma = 1/5, Ivec = NULL), mod_inits = list(),
   params = list(N = 1000, mu = 0.01, mut_type = "shift", mut_mean = -1, mut_sd
   = 0.5, mut_var = "beta", mut_link = NULL, tradeoff_pars = NULL),
-  mod_params = list(), tradeoff_fun = "none", nt = 1e+05,
-  rptfreq = max(nt/500, 1), discrete = TRUE, seed = NULL,
-  progress = FALSE, debug = FALSE, useCpp = FALSE)
+  mod_params = list(), tradeoff_fun = "none", nt = 1e+05, dt = 1,
+  rptfreq = max(nt/500, 1), discrete = TRUE, hazard = FALSE,
+  seed = NULL, progress = FALSE, debug = FALSE, useCpp = FALSE)
 }
 \arguments{
 \item{inits}{list
@@ -39,9 +39,13 @@ run_sim(inits = list(R0 = 2, gamma = 1/5, Ivec = NULL), mod_inits = list(),
 
 \item{nt}{number of time steps}
 
+\item{dt}{within-step granularity}
+
 \item{rptfreq}{reporting frequency (should divide nt)}
 
 \item{discrete}{(logical) run discrete-time sim?}
+
+\item{hazard}{parameterize events by hazard? (allows time-step cutting in discrete-time models)}
 
 \item{seed}{random-number seed}
 
