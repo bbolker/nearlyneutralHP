@@ -239,6 +239,7 @@ run_sim <- function(inits=list(R0=2, ## >1
     if (discrete && !hazard && dt!=1) {
         warning("probs not adjusted for dt!=1 ...")
     }
+    if (dt>1) warning("dt set to >1 ... ??")
     if (length(mod_params)>0) {
         params <- modifyList(params,mod_params)
     }
@@ -312,8 +313,11 @@ run_sim <- function(inits=list(R0=2, ## >1
     ##  distribution over time
     ## nq <- 9
     ## qvec <- seq(0,1,length=nq+2)[-c(1,nq+2)]
-    tnames <- c(outer(c("mean_l","sd_l"),names(state$traits),paste0))
-    res <- as.data.frame(matrix(NA,nrow=nrpt,ncol=8,
+    tnames <- c(c(outer(c("mean_l","sd_l"),
+                      names(state$traits),
+                      paste0)),
+                "mean_R0","sd_R0")
+    res <- as.data.frame(matrix(NA,nrow=nrpt,ncol=10,
                                 dimnames=list(NULL,c("time","S","I",
                                                     tnames,
                                                     "n_events"))))
@@ -451,6 +455,11 @@ run_sim <- function(inits=list(R0=2, ## >1
             res[i,paste0("sd_l",tt)] <-
                 sqrt(sum(state$Ivec*(state$traits[[tt]]$unconstr-tmean)^2)/I_tot)
         }
+        R0vec <- state$traits[["beta"]]$constr/
+                   state$traits[["gamma"]]$constr*params$N
+        res[i,"mean_R0"] <- R0mean <-
+            sum(state$Ivec*R0vec)/I_tot
+        res[i,"sd_R0"] <- sqrt(sum(state$Ivec*(R0vec-R0mean)^2)/I_tot)
         res[i,"n_events"] <- n_events
         if (progress) cat(".")
         ## DRY ...

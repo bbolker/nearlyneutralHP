@@ -1,3 +1,5 @@
+library(pevosim)
+
 t1A <- system.time(res1A <- run_sim(nt=1e4,rptfreq=10,seed=101,progress=TRUE))
 t1B <- system.time(res1B <- run_sim(nt=1e4,rptfreq=10,seed=101,discrete=FALSE,
                                     progress=TRUE))
@@ -7,8 +9,6 @@ t1C <- system.time(res1C <- run_sim(nt=1e4,rptfreq=10,seed=101,progress=TRUE,
 t1D <- system.time(res1D <- run_sim(nt=1e4,rptfreq=10,seed=101,progress=TRUE,
                                     dt=0.2,hazard=TRUE))
 
-path <- "~/projects/nearlyneutralHP/pevosim"
-devtools::load_all(path)
 
 hazdtvec <- 1/c(1,2,5,10,20)
 hazdtList <- lapply(hazdtvec,

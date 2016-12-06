@@ -4,12 +4,17 @@ author: Ben Bolker
 date: 4 December 2016
 bibliography: virulence.bib
 output:
-  ioslides_presentation:
-     mathjax: local
-     self_contained: false
+  ioslides_presentation
 csl: reflist2.csl
 ---
-<!-- mathjax:local (under ioslides) self-contained: false (standalone) for pres. version -->
+<!--
+* for presentation version *
+
+  ioslides_presentation:
+    mathjax:local
+	self-contained: false
+
+-->
 
 <!-- 
 apa.csl is a slightly hacked version of APA 

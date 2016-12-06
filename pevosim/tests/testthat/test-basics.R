@@ -7,7 +7,7 @@ if (FALSE) {
     path <- c("/media/sf_Documents/projects/nearlyneutralHP/pevosim")
     ## source(file.path(path,"R/funs.R"))
     ## Rcpp::sourceCpp(file.path(path,"src/funs.cpp"))
-    ## devtools::load_all(path)
+    devtools::load_all(path)
 }
 
 if (make_testdata) {
@@ -68,6 +68,8 @@ test_that("single steps", {
                             sd_lbeta=0,
                             mean_lgamma = -1.6094379124341,
                             sd_lgamma = 0,
+                            mean_R0=10,
+                            sd_R0=0,
                             n_events=1))
 
     if (FALSE) {
@@ -94,6 +96,8 @@ test_that("single steps", {
                             sd_lbeta=0.39845801690882,
                             mean_lgamma = -1.6094379124341,
                             sd_lgamma = 0,
+                            mean_R0=10,
+                            sd_R0=0,
                             n_events=1))
 
 
