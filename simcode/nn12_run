@@ -1,0 +1,3 @@
+#! /bin/bash
+module unload intel; module load r/3.2.3
+sqsub -r 10h --mpp 1G -o nn12.%J.out --mail-end R CMD BATCH --vanilla nn12_sims.R
