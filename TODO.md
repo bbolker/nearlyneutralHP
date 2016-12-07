@@ -3,15 +3,13 @@
    - numbers of events per time step in output
    - keep shortening time, comparing
    - more unit tests
+- profile new code for speed
 - document mutation bias for gamma
-- report R0 
 
-- max values for parameters (multlogit)
+- max values for parameters (multlogit): TEST
 - tradeoff curves
 - beta+gamma mutation
-- switch discrete-time to log-hazard link for beta?
 
-- bimodality: transient effect?
 - track lineage age, ancestry
 - SIRS?
 - output distributions

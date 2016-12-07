@@ -15,3 +15,7 @@
    - hazdt: hazard with dt=1/(c(1,2,5,10,20))
    - size: pop size from 20 to 1000. dt=20 -- should have been 1/20!
    - csize: ditto, continuous-time
+
+- nn12,13: tests of discrete time step & size
+   R0 start value (10, 1e6/1e7) x time step x pop size
+- nn14: ditto, but continuous (in R)
