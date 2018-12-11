@@ -26,6 +26,7 @@
 
 ## ^^I am not very happy with all of the matrix(..., ncol = X, nrow = Y) floating around. Would like to clean this up
 ## ^^Some checks have been commented out. They need to be reframed and added back in. (#!)
+## ^^Assuming mutated hosts come from only S class will lead to few mutated hosts as the sim progresses as beta climbs to 1
 
 ## ^^state$ltraitvec can remain a vector, which defines the intrinsic strategy of each parasite strain
 ## ^^state$hrtraitvec can be a new vector that gives host investment in resistance
@@ -80,23 +81,24 @@ update_mut <- function(state, mut_link, mutated, mutated_host, mut_var) {
 
    ## ^^Just update all.
    state[[mut_var]] <- t(mut_link$linkinv(outer(state$ltraitvec, state$hrtraitvec,  "/")))
-   ## ^^for now randomize which strain of host gets infected with the new mutant (assume resistance is only about beta for now
-   ## ^^(which is weird yes, but just getting structure together for now))
-   random_mutant    <- replicate(mutated, rmultinom(1, size = length(state$Svec), prob = state$Svec))
+   if (sum(mutated) > 0) {
    ## ^^Add new columns for the new infected individuals due to mutation
-   state$Imat       <- cbind(state$Imat, replicate(mutated, rmultinom(1, size = 1, prob = state$Svec), simplify = "matrix"))
+   state$Imat       <- cbind(state$Imat, replicate(sum(mutated), rmultinom(1, size = 1, prob = state$Svec), simplify = "matrix"))
+   }
    ## ^^Add new rows with 0s for the new S genotypes
-   state$Imat       <- rbind(state$Imat, matrix(data = rep(0, mutated_host*ncol(state$Imat)), ncol = ncol(state$Imat), nrow = mutated_host))
+   state$Imat       <- rbind(state$Imat, matrix(data = rep(0, sum(mutated_host)*ncol(state$Imat)), ncol = ncol(state$Imat), nrow = sum(mutated_host)))
+   if (sum(mutated_host) > 0) {
    ## ^^Update Svec (mutated_host is a vector that tracks which host mutated)
    state$Svec       <- cbind(state$Svec - mutated_host, matrix(rep(1, sum(mutated_host)), nrow = 1))
+   }
 
    return(state)
 }
 
 do_extinct <- function(state,mut_var,extinct) {
-    state[[mut_var]] <- state[[mut_var]][-extinct]
+    state[[mut_var]] <- state[[mut_var]][,-extinct]
     state$ltraitvec  <- state$ltraitvec[-extinct]
-    state$Imat       <- state$Imat[-extinct]
+    state$Imat       <- state$Imat[,-extinct]
     return(state)
 }
 
@@ -380,7 +382,7 @@ run_sim <- function(R0_init=2,  ## >1
                     state <- do_mut(state,
                                     mut_var=mut_var,
                                     mut_link,
-                                    orig_trait=rep(state$hrtraitvec,mutated_host),
+                                    orig_trait=rep(state$hrtraitvec,mutated_host), ## ^^For now assume mutated hosts come from S class
                                     mut_mean=mut_mean,
                                     mut_sd=mut_sd,
                                     mut_host=TRUE,
@@ -392,7 +394,7 @@ run_sim <- function(R0_init=2,  ## >1
                 ## ^^update Svec with infections and recoveries prior to the mutations
                 if (length(state$Imat)>0) {
                     ## avoid X+numeric(0)==numeric(0) problem ...
-                    state$Svec <- state$Svec + rowSums(recover) - rowSums(newinf)
+                    state$Svec <- state$Svec + t(rowSums(recover)) - t(rowSums(newinf))
                 }
 
                 ## Update state after host and parasite mutations
