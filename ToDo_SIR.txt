@@ -1,0 +1,8 @@
+ToDo SIR
+--------
+
+- Density dependent birth is currently a placeholder. Currently only I reproduce which could be ok.
+- Hosts evolve in a nonsensical way
+- Hosts can only evolve on the resistance axis
+- System goes extinct quickly with any virulence mortality. Need to add evolution along the tradeoff.
+- Need to speed up code.
