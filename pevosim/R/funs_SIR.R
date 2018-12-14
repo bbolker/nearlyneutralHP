@@ -44,24 +44,38 @@
 #'
 
 ##^^mutations are likely to get more complicated, split function into host mutation and parasite mutation
-get_mut_h  <- function(orig_trait, mut_var, mut_mean, mut_sd, mut_host, mut_host_type, mut_host_sd_shift, mut_host_mean_shift, mut_type = "shift") {
+get_mut_h  <- function(state, orig_trait, mut_var, mut_mean, mut_sd, mut_host, mut_host_type
+  , mutated_host, res_mut, tol_mut
+  , mut_host_sd_shift, mut_host_mean_shift, mut_type = "shift") {
+
     if (mut_type=="shift") {
 
       ## **direction of change different for host and pathogen and different for the two parameters (beta and gamam)
-        new_trait <- orig_trait +
-            rlnorm(length(orig_trait)
+
+      ## ^^First get new resistant mutatnts
+        new_trait_r <- orig_trait$res_mut +
+            rlnorm(length(orig_trait$res_mut)
             , ifelse(mut_var == "beta"
               , mut_mean*-1/mut_host_mean_shift
               , mut_mean/mut_host_mean_shift)
             , mut_sd/mut_host_sd_shift)  ## allow the sd for the host to be a multiple of the sd for the pathogen (1 for equal)
 
-        ## **if only advantageous mutations are propagated (not neutral...)
-         ## ** retain the minimum of the new and original trait
-          ## ** Doing it this way assumes that a host has the opportunity to counter-evolve to each strain (maybe realistic maybe not depending)
-           ## ** on the assumed mechanics. Alternatively could assume a single adaptation that is equivalent to all strains
-        if (mut_host_type == "advantageous") new_trait <- pmin(new_trait, orig_trait)
-        if (any(is.na(new_trait))) stop("??")
-        return(new_trait)
+      ## ^^Second, retrieve resistance values for the new tolerant mutatnts
+        repeated_trait_r <- rep(state$hrtraitvec, tol_mut)
+        new_trait_r      <- c(new_trait_r, repeated_trait_r)
+
+         new_trait_t <- orig_trait$tol_mut +
+            rlnorm(length(orig_trait$tol_mut)
+            , ifelse(mut_var == "beta"
+              , mut_mean*-1/mut_host_mean_shift
+              , mut_mean/mut_host_mean_shift)
+            , mut_sd/mut_host_sd_shift)  ## allow the sd for the host to be a multiple of the sd for the pathogen (1 for equal)
+
+        repeated_trait_t <- rep(state$httraitvec, res_mut)
+        new_trait_t      <- c(repeated_trait_t, new_trait_t)
+
+        if (any(is.na(c(new_trait_r, new_trait_t)))) stop("??")
+        return(list(res_trait = new_trait_r, tol_trait = new_trait_t))
     } else stop("unknown mut_type")
 }
 
@@ -86,20 +100,25 @@ do_mut     <- function(state, mut_var, mut_link, mut_host, orig_trait, ...) {
     } else {
     ## **else if the mutation is in the host (some adjustments to how state gets updated when the host is evolving)
     ## ^^new vector for host traits
-    new_trait        <- get_mut_h(orig_trait, mut_var, mut_host,...)
-    state$hrtraitvec <- c(state$hrtraitvec, new_trait)
+    new_trait        <- get_mut_h(state, orig_trait, mut_var, mut_host,...)
+    state$hrtraitvec <- c(state$hrtraitvec, new_trait$res_trait)
+    state$httraitvec <- c(state$httraitvec, new_trait$tol_trait)
     }
     return(state)
 }
 
 update_mut <- function(state, mut_link, mutated, mutated_host, mut_var) {
-   ## ^^Assumes mutated hosts can't get infected in the same time step. Birth or something...
 
    ## ^^Update all trait combinations
+
+   ## ^^Resistance will act as a multiple to parasite intrinsic transmission rate...
    state[[mut_var]] <- t(mut_link$linkinv(outer(state$ltraitvec, state$hrtraitvec,  "/")))
 
-   ## ^^Updating alpha will follow the tradeoff curve eventually, but for now just propagate 1s
-   state$alpha <- matrix(data = state$alpha[1,1], nrow = nrow(state$beta), ncol = ncol(state$beta))
+   ## ^^...and parasite intrinsic mortality rate following some relationship yet to be determined
+   state$palphavec <- rep(state$palphavec[1], length(state$ltraitvec))
+
+   ## ^^Tolerance will act as a multiple to parasite intrinsic mortality rate
+   state$alpha <- t(outer(state$palphavec, state$hrtraitvec,  "*"))
 
    ## ^^Update Infected matrix with the new strain, maintaining which S class received that mutation.
     ## ^^For each mutated strain, Imat gets a new column with a single 1, in the row in which the mutation occurred
@@ -211,8 +230,8 @@ multlogit <- function(minval=0,maxval=1,scale=1) {
 #' @param mut_host_sd_shift **Host multiple of parasite sd
 #' @param mut_host_mean_shift **Host multiple of parasite mean (not set up yet)
 #' @param mut_host_mu_shift **Host multiple of parasite mean (not set up yet). On the wrong scale (muliple on prob scale) but ok for now because of tiny prob....
-#' @param start_res ## ^^starting host resistance value
-#' @param start_tol ## ^^starting host tolerance value
+#' @param res0 ## ^^starting host resistance value
+#' @param tol0 ## ^^starting host tolerance value
 #' @param Imat initial vector of infected numbers
 #' @param mu mutation probability per replication
 #'
@@ -248,15 +267,14 @@ run_sim <- function(R0_init=2,  ## >1
                     mut_var="beta",
                     mut_link=NULL,
                     mut_host=FALSE,
-                    mut_host_type="neutral", ## **all host adaptations take over the pop (option: neutral) or only advantageous (option: advantageous)
-                                             ## **could more cleanly use TRUE/FALSE here, but wanted to leave options open for other alternatives
                     mut_host_prob=TRUE,
                     mut_host_freq="prob",
                     mut_host_sd_shift=1,     ## **1 for identical sd to the parasite (mean assumed to be the same)
                     mut_host_mean_shift=1,   ## **1 for identical sd to the parasite (mean assumed to be the same); not included yet
                     mut_host_mu_shift=2,
-                    start_res=1,   ## ^^starting host resistance value
-                    start_tol=1,   ## ^^starting host tolerance value
+                    mut_host_res_bias=0.5,   ## ^^0.5 means equal probability of evolving resistance or tolerance
+                    res0=1,   ## ^^starting host resistance value
+                    tol0=1,   ## ^^starting host tolerance value
                     Imat=NULL,
                     host_dyn_only=FALSE,
                     dt=1,
@@ -313,7 +331,7 @@ run_sim <- function(R0_init=2,  ## >1
     ## ^^Assume some start for alpha, for now assume 1 (set init_alpha to 1), build in tradeoff curve later
     alpha0 <- alpha0
 
-    ## set up initial trait vector
+    ## set up initial trait vectors
     if (mut_var=="beta") {
         if (is.null(mut_link)) {
             mut_link <- if (discrete) make.link("logit") else make.link("log")
@@ -328,9 +346,15 @@ run_sim <- function(R0_init=2,  ## >1
         ltraitvec <- mut_link$linkfun(gamma0)
     }
 
+    ## ^^Alpha (intrinsic parasite mortality pressure)
+    palphavec  <- rep(alpha0, length(ltraitvec))
+
     ## ^^Initial trait vec for the host
-    hrtraitvec <- rep(start_res, length(Svec))
-    httraitvec <- rep(start_tol, length(Svec))
+    hrtraitvec <- rep(res0, length(Svec))
+    httraitvec <- rep(tol0, length(Svec))
+
+    ## ^^Set up initial alpha matrix
+    alpha0 <- outer(httraitvec, palphavec, "*")
 
     ## parameters structure (parallel vectors), so these can
     ## be modified via function and passed back ...
@@ -339,6 +363,7 @@ run_sim <- function(R0_init=2,  ## >1
     , gamma      = as.matrix(gamma0) ## ^^as will gamma (make matrix after, because ltraitvec needs to remain a vector)
     , alpha      = as.matrix(alpha0) ## ^^new parameter. Virulence of parasite
     , ltraitvec  = ltraitvec
+    , palphavec  = palphavec
     , hrtraitvec = hrtraitvec
     , httraitvec = httraitvec
     , Imat       = Imat
@@ -386,6 +411,8 @@ run_sim <- function(R0_init=2,  ## >1
                 ## cat("betavec:",betavec,"\n")
                 ## cat("Imat:",Imat,"\n")
 
+                assign("state_check", state, .GlobalEnv)
+
                 ## ^^[Step 1]: Birth ^^ ## Not accessible to death or infection until the next time step.
                 ## ^^ugly form of density dependence here for now keeping per-capita birth equal to the total death rate of both S and I
                 birth_rate <- (sum(state$Imat - (state$Imat * (1 - d) * (1 - d * state$alpha))) + (sum(state$Svec) * d)) / sum(state$Svec)
@@ -408,6 +435,8 @@ run_sim <- function(R0_init=2,  ## >1
                 newinf <- get_inf(state$Svec, uninf, state$Imat, beta = state$beta)
                 stopifnot(sum(rowSums(newinf) + uninf) == sum(state$Svec))
 
+                assign("inf_check", newinf, .GlobalEnv)
+
                 ## ^^[Step 4]: Death of I ^^ ##
                  ## ^^Natural death + parasite induced death
                 deathI     <- matrix(data = rbinom(length(c(state$Imat)), size = c(state$Imat), prob = d)
@@ -426,10 +455,10 @@ run_sim <- function(R0_init=2,  ## >1
                 ## fraction of new infections -> mutation
                 #mutated <- rbinom(ncol(newinf), size=colSums(newinf), prob=mu)
                 ## ^^Would like to use ifelse, but I hate its behavior
-               if (host_dyn_only == FALSE) {
+               if (host_dyn_only == FALSE & sum(newinf) != 0) {
                   mutated <- matrix(rbinom(newinf, size = newinf, prob = mu), nrow = nrow(newinf), ncol = ncol(newinf))
                } else {
-                  mutated <- matrix(rbinom(nrow(newinf), size=newinf, prob=mu), nrow = nrow(newinf), ncol = ncol(newinf))
+                  mutated <- matrix(rbinom(nrow(newinf), size = newinf, prob = mu), nrow = nrow(newinf), ncol = ncol(newinf))
                }
 
                 ## **new host mutation, arising every time step with a given prob ("prob") or after X generations (a numeric value)
@@ -439,6 +468,11 @@ run_sim <- function(R0_init=2,  ## >1
                 ## **assume probability of mutation is just in S (as if S hosts are the only hosts reproducing -- a common assumption)
                 mutated_host <- rbinom(length(birth), size = birth, prob = mu/mut_host_mu_shift)
                 birth        <- birth - mutated_host
+
+                ## ^^of the mutated hosts sort into resistance and tolerance mutants
+                mutated_host_r <- rbinom(length(mutated_host), size = mutated_host, prob = mut_host_res_bias)
+                mutated_host_t <- mutated_host - mutated_host_r
+
                 ## **because host types aren't being tracked, for now just track if any mutations arise or not
                 ## **was thinking about taking X number of mutations and choosing most advantageous from them but that seems to be a
                 ## **very half-assed improvement. So just mechanics for now, worry about this stuff when the model changes
@@ -464,33 +498,41 @@ run_sim <- function(R0_init=2,  ## >1
                 dfun("before mutation")
                 if (debug) print(mutated)
 
+                assign("mut_check", mutated, .GlobalEnv)
+
                 ## now do mutation ...
                 tot_mut <- sum(mutated)
                 ## **mut parasite first. Another choice of order that may matter
                 if (tot_mut>0) {
                     state <- do_mut(state,
-                                    mut_var=mut_var,
+                                    mut_var    = mut_var,
                                     mut_link,
-                                    orig_trait=rep(state$ltraitvec,colSums(mutated)), ## ^^Just care about intrinsic nature of a strain
-                                    mut_mean=mut_mean,
-                                    mut_sd=mut_sd,
-                                    mut_host=FALSE,
-                                    mut_type=mut_type)
+                                    orig_trait = rep(state$ltraitvec, colSums(mutated)), ## ^^Just care about intrinsic nature of a strain
+                                    mut_mean   = mut_mean,
+                                    mut_sd     = mut_sd,
+                                    mut_host   = FALSE,
+                                    mut_type   = mut_type)
                 }
 
                 ## **host mutations
                 if (mut_host == TRUE & sum(mutated_host) > 0) {
                     state <- do_mut(state,
-                                    mut_var=mut_var,
+                                    mut_var    = mut_var,
                                     mut_link,
-                                    orig_trait=rep(state$hrtraitvec,mutated_host), ## ^^For now assume mutated hosts come from S class
-                                    mut_mean=mut_mean,
-                                    mut_sd=mut_sd,
-                                    mut_host=TRUE,
-                                    mut_host_type=mut_host_type,
-                                    mut_host_sd_shift=mut_host_sd_shift,
-                                    mut_host_mean_shift=mut_host_mean_shift,
-                                    mut_type=mut_type)
+                                    orig_trait = list(
+                                   res_mut = rep(state$hrtraitvec, mutated_host_r)
+                                 , tol_mut = rep(state$httraitvec, mutated_host_t)
+                                    ),
+                                    res_mut             = mutated_host_r,
+                                    tol_mut             = mutated_host_t,
+                                    mutated_host        = mutated_host,
+                                    mut_mean            = mut_mean,
+                                    mut_sd              = mut_sd,
+                                    mut_host            = TRUE,
+                                    mut_host_type       = mut_host_type,
+                                    mut_host_sd_shift   = mut_host_sd_shift,
+                                    mut_host_mean_shift = mut_host_mean_shift,
+                                    mut_type            = mut_type)
                 }
 
                 ## ^^update Svec with infections and recoveries prior to the mutations (and host birth)
