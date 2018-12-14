@@ -41,37 +41,53 @@
 #' @param mu per-infection mutation probability
 #' @param gamma recovery rate
 #' @param lbeta0 initial beta
-get_mut <- function(orig_trait, mut_var, mut_mean, mut_sd, mut_host, mut_host_type, mut_host_sd_shift, mut_type = "shift") {
+#'
+
+##^^mutations are likely to get more complicated, split function into host mutation and parasite mutation
+get_mut_h  <- function(orig_trait, mut_var, mut_mean, mut_sd, mut_host, mut_host_type, mut_host_sd_shift, mut_host_mean_shift, mut_type = "shift") {
     if (mut_type=="shift") {
+
       ## **direction of change different for host and pathogen and different for the two parameters (beta and gamam)
         new_trait <- orig_trait +
-            rnorm(length(orig_trait),
-              ifelse(mut_var == "beta",                           ## if beta is evolving:
-              ifelse(mut_host == FALSE, mut_mean, mut_mean*-1),   ## in the pathogen: mut_mean is negative; in host change positive to keep disadvantageous mutations common
-              ifelse(mut_host == FALSE, mut_mean*-1, mut_mean)),  ## if gamma is evolving in the pathogen mut_mean is negative; in host positive
-              ifelse(mut_host == FALSE, mut_sd, mut_sd/mut_host_sd_shift)) ## allow the sd for the host to be a multiple of the sd for the pathogen (1 for equal)
+            rlnorm(length(orig_trait)
+            , ifelse(mut_var == "beta"
+              , mut_mean*-1/mut_host_mean_shift
+              , mut_mean/mut_host_mean_shift)
+            , mut_sd/mut_host_sd_shift)  ## allow the sd for the host to be a multiple of the sd for the pathogen (1 for equal)
+
         ## **if only advantageous mutations are propagated (not neutral...)
-        if (mut_host == TRUE & mut_host_type == "advantageous") {
-        ## ** retain the minimum of the new and original trait
-        ## ** Doing it this way assumes that a host has the opportunity to counter-evolve to each strain (maybe realistic maybe not depending)
-        ## ** on the assumed mechanics. Alternatively could assume a single adaptation that is equivalent to all strains
-        new_trait <- pmin(new_trait, orig_trait)
-        }
+         ## ** retain the minimum of the new and original trait
+          ## ** Doing it this way assumes that a host has the opportunity to counter-evolve to each strain (maybe realistic maybe not depending)
+           ## ** on the assumed mechanics. Alternatively could assume a single adaptation that is equivalent to all strains
+        if (mut_host_type == "advantageous") new_trait <- pmin(new_trait, orig_trait)
         if (any(is.na(new_trait))) stop("??")
         return(new_trait)
     } else stop("unknown mut_type")
 }
 
-do_mut <- function(state, mut_var, mut_link, mut_host, orig_trait, ...) {
+get_mut_p  <- function(orig_trait, mut_var, mut_mean, mut_sd, mut_type = "shift") {
+    if (mut_type=="shift") {
+        new_trait <- orig_trait +
+            rnorm(length(orig_trait),
+              ifelse(mut_var == "beta",  ## **beta and gamma in opposite directions
+               mut_mean
+            ,  mut_mean*-1)
+            , mut_sd)
+        if (any(is.na(new_trait))) stop("??")
+        return(new_trait)
+    } else stop("unknown mut_type")
+}
+
+do_mut     <- function(state, mut_var, mut_link, mut_host, orig_trait, ...) {
     ## **If the mutation is in the parasite
     if (mut_host == FALSE) {
-    new_trait        <- get_mut(orig_trait,mut_var,mut_host,...)
-    state$ltraitvec  <- c(state$ltraitvec,new_trait)
+    new_trait        <- get_mut_p(orig_trait, mut_var,...)
+    state$ltraitvec  <- c(state$ltraitvec, new_trait)
     } else {
     ## **else if the mutation is in the host (some adjustments to how state gets updated when the host is evolving)
     ## ^^new vector for host traits
-    new_trait        <- get_mut(orig_trait,mut_var,mut_host,...)
-    state$hrtraitvec <- c(state$hrtraitvec,new_trait)
+    new_trait        <- get_mut_h(orig_trait, mut_var, mut_host,...)
+    state$hrtraitvec <- c(state$hrtraitvec, new_trait)
     }
     return(state)
 }
@@ -109,7 +125,7 @@ update_mut <- function(state, mut_link, mutated, mutated_host, mut_var) {
    return(state)
 }
 
-do_extinct <- function(state,mut_var,extinct,parasite) {
+do_extinct <- function(state, mut_var, extinct, parasite) {
   ## ^^If a parasite strain has gone extinct remove a column
   if (parasite == TRUE) {
     state[[mut_var]] <- state[[mut_var]][,-extinct, drop = FALSE]
@@ -128,7 +144,7 @@ do_extinct <- function(state,mut_var,extinct,parasite) {
     return(state)
 }
 
-## ^^This function is borderline hideous but I am almost positive it does what I want it to do. All ears for a better way to write this
+## ^^This function is borderline hideous but it does what I want it to do. All ears for a better way to write this
 get_inf <- function (Svec, uninf, Imat, beta) {
 
 matrix(
@@ -223,7 +239,6 @@ run_sim <- function(R0_init=2,  ## >1
                     gamma0=1/5,  ## >0
                     gamma_max=Inf,
                     alpha0=1,
-                    b=0.1,
                     d=0.1,
                     N=1000,     ## integer >0
                     mu=0.01,    ## >0
@@ -238,7 +253,7 @@ run_sim <- function(R0_init=2,  ## >1
                     mut_host_prob=TRUE,
                     mut_host_freq="prob",
                     mut_host_sd_shift=1,     ## **1 for identical sd to the parasite (mean assumed to be the same)
-                 #  mut_host_mean_shift=1,   ## **1 for identical sd to the parasite (mean assumed to be the same); not included yet
+                    mut_host_mean_shift=1,   ## **1 for identical sd to the parasite (mean assumed to be the same); not included yet
                     mut_host_mu_shift=2,
                     start_res=1,   ## ^^starting host resistance value
                     start_tol=1,   ## ^^starting host tolerance value
@@ -292,8 +307,8 @@ run_sim <- function(R0_init=2,  ## >1
     }
     Svec <- N-Imat
 
-    ## R0 = beta*N/gamma
-    beta0 <- R0_init*gamma0/N
+    ## R0 = beta*N/(gamma + d)
+    beta0 <- R0_init*(gamma0+d)/N
 
     ## ^^Assume some start for alpha, for now assume 1 (set init_alpha to 1), build in tradeoff curve later
     alpha0 <- alpha0
@@ -371,16 +386,17 @@ run_sim <- function(R0_init=2,  ## >1
                 ## cat("betavec:",betavec,"\n")
                 ## cat("Imat:",Imat,"\n")
 
-#                print(j)
-
                 ## ^^[Step 1]: Birth ^^ ## Not accessible to death or infection until the next time step.
-                ## ^^ugly form of density dependence here for now keeping per-capita birth equal to the total death rate
-                  ## of both S and I
-                birth_rate <- ((sum(state$Imat) - (sum(state$Imat) * (1 - d) * (1 - d * state$alpha))) + (sum(state$Svec) * d)) / sum(state$Svec)
-                birth <- matrix(rbinom(length(state$Svec),size=state$Svec,prob=birth_rate), nrow = 1)
+                ## ^^ugly form of density dependence here for now keeping per-capita birth equal to the total death rate of both S and I
+                birth_rate <- (sum(state$Imat - (state$Imat * (1 - d) * (1 - d * state$alpha))) + (sum(state$Svec) * d)) / sum(state$Svec)
+                if (birth_rate != 0 & sum(state$Svec > 0)) {
+                birth      <- matrix(rbinom(length(state$Svec), size = state$Svec, prob = birth_rate), nrow = 1)
+                } else {
+                birth      <- matrix(rep(0, length(state$Svec)), nrow = 1)
+                }
 
                 ## ^^[Step 2]: Death of S ^^ ##
-                deathS     <- matrix(rbinom(length(state$Svec),size=state$Svec,prob=d), nrow = 1)
+                deathS     <- matrix(rbinom(length(state$Svec), size = state$Svec, prob = d), nrow = 1)
                 state$Svec <- state$Svec - deathS
 
                 ## ^^[Step 3]: Infection ^^ ##
@@ -389,24 +405,21 @@ run_sim <- function(R0_init=2,  ## >1
                 ## division of new infectives among strains
                 ## 'prob' is internally normalized
                 ## ^^See function. A bit ugly because of apply and matrices needing a transpose...
-                ## ^^would like to use ifelse here, but annoyingly ifelse doesn't seem to want to pass a matrix
-
                 newinf <- get_inf(state$Svec, uninf, state$Imat, beta = state$beta)
                 stopifnot(sum(rowSums(newinf) + uninf) == sum(state$Svec))
 
                 ## ^^[Step 4]: Death of I ^^ ##
                  ## ^^Natural death + parasite induced death
-                deathI     <- matrix(data = rbinom(length(c(state$Imat)),size=c(state$Imat),prob=d)
+                deathI     <- matrix(data = rbinom(length(c(state$Imat)), size = c(state$Imat), prob = d)
                   , ncol = ncol(state$Imat), nrow = nrow(state$Imat))
                 state$Imat <- state$Imat - deathI
                 ## ^^here alpha is treated as some multiple of d
-                deathI     <- matrix(data = rbinom(length(c(state$Imat)),size=c(state$Imat),prob=c(state$alpha)*d)
+                deathI     <- matrix(data = rbinom(length(c(state$Imat)), size = c(state$Imat), prob = c(state$alpha)*d)
                   , ncol = ncol(state$Imat), nrow = nrow(state$Imat))
                 state$Imat <- state$Imat - deathI
-                stopifnot(((all(state$Imat) >= 0) | all(state$Svec) >= 0))
 
                 ## ^^[Step 5]: Recovery of I ^^ ##
-                recover <- matrix(data = rbinom(length(c(state$Imat)),size=c(state$Imat),prob=c(state$gamma))
+                recover <- matrix(data = rbinom(length(c(state$Imat)), size = c(state$Imat), prob = c(state$gamma))
                   , ncol = ncol(state$Imat), nrow = nrow(state$Imat))
 
                 ## ^^[Step 6]: Mutation of new infections ^^ ##
@@ -414,7 +427,7 @@ run_sim <- function(R0_init=2,  ## >1
                 #mutated <- rbinom(ncol(newinf), size=colSums(newinf), prob=mu)
                 ## ^^Would like to use ifelse, but I hate its behavior
                if (host_dyn_only == FALSE) {
-                  mutated <- matrix(rbinom(newinf, size=newinf, prob=mu), nrow = nrow(newinf), ncol = ncol(newinf))
+                  mutated <- matrix(rbinom(newinf, size = newinf, prob = mu), nrow = nrow(newinf), ncol = ncol(newinf))
                } else {
                   mutated <- matrix(rbinom(nrow(newinf), size=newinf, prob=mu), nrow = nrow(newinf), ncol = ncol(newinf))
                }
@@ -424,7 +437,7 @@ run_sim <- function(R0_init=2,  ## >1
                 ## ^^[Step 7]: Mutation of new births ^^ ##
                 if (mut_host_freq == "prob") {
                 ## **assume probability of mutation is just in S (as if S hosts are the only hosts reproducing -- a common assumption)
-                mutated_host <- rbinom(length(birth),size=birth, prob = mu/mut_host_mu_shift)
+                mutated_host <- rbinom(length(birth), size = birth, prob = mu/mut_host_mu_shift)
                 birth        <- birth - mutated_host
                 ## **because host types aren't being tracked, for now just track if any mutations arise or not
                 ## **was thinking about taking X number of mutations and choosing most advantageous from them but that seems to be a
@@ -440,22 +453,11 @@ run_sim <- function(R0_init=2,  ## >1
                 }
                 }
 
-              ## ^^Some debugging stuff
-#                state_check <- state
-#                state_check$j <- j
-#                assign("state_check",state_check,.GlobalEnv)
-#                assign("uninf_check",uninf,.GlobalEnv)
+                stopifnot(length(recover)==length(mutated))
+                stopifnot(length(newinf)==length(state$Imat))
 
-#!              stopifnot(length(recover)==length(mutated))
-#!              stopifnot(length(newinf)==length(state$Imat))
                 ## update infectives
-                ## ^^I am not enirely sure where I went wrong with my code, but I kinda hate having to t()...
-#                if (host_dyn_only == FALSE) {
-#                print(recover); print(newinf)
                 state$Imat <- state$Imat - recover + newinf - mutated
-#                } else {
-#                state$Imat <- state$Imat - recover + t(newinf) - t(mutated)
-#                }
                 ## cat("I,uninf, unmutated, mutated, recovered",
                 ## c(sum(Imat),uninf,sum(newinf-mutated),sum(mutated),sum(recover)),
                 ## "\n")
@@ -464,7 +466,7 @@ run_sim <- function(R0_init=2,  ## >1
 
                 ## now do mutation ...
                 tot_mut <- sum(mutated)
-                ## **mut parasite first. Another choice of order that may matter (especically if the model gets more complicated)
+                ## **mut parasite first. Another choice of order that may matter
                 if (tot_mut>0) {
                     state <- do_mut(state,
                                     mut_var=mut_var,
@@ -473,14 +475,11 @@ run_sim <- function(R0_init=2,  ## >1
                                     mut_mean=mut_mean,
                                     mut_sd=mut_sd,
                                     mut_host=FALSE,
-                                    mut_host_type=mut_host_type,
-                                    mut_host_sd_shift=mut_host_sd_shift,
                                     mut_type=mut_type)
                 }
-                    ## **host mutation if there was one
-                    ## ^^Mechanics of host mutation will only need to change a bit (similar mechanics to parasite vector: rbinom(1,S_i,mu))
 
-                    if (mut_host == TRUE & sum(mutated_host) > 0) {
+                ## **host mutations
+                if (mut_host == TRUE & sum(mutated_host) > 0) {
                     state <- do_mut(state,
                                     mut_var=mut_var,
                                     mut_link,
@@ -490,17 +489,14 @@ run_sim <- function(R0_init=2,  ## >1
                                     mut_host=TRUE,
                                     mut_host_type=mut_host_type,
                                     mut_host_sd_shift=mut_host_sd_shift,
+                                    mut_host_mean_shift=mut_host_mean_shift,
                                     mut_type=mut_type)
-                    }
+                }
 
                 ## ^^update Svec with infections and recoveries prior to the mutations (and host birth)
                 if (length(state$Imat)>0) {
                     ## avoid X+numeric(0)==numeric(0) problem ...
-#                if (host_dyn_only == FALSE) {
                 state$Svec <- state$Svec + rowSums(recover) - rowSums(newinf) + birth
-#                } else {
-#                state$Svec <- state$Svec + t(rowSums(recover)) - t(rowSums(t(newinf))) + birth
-#                }
                 }
 
                 ## Update state after host and parasite mutations
@@ -513,11 +509,11 @@ run_sim <- function(R0_init=2,  ## >1
                   , mut_var      = mut_var)
                 }
 
-                if (all(state$Imat==0) & host_dyn_only == FALSE) {
+                if (sum(state$Imat)==0 & host_dyn_only == FALSE) {
                     message(sprintf("system went extinct prematurely (t=%d)",i))
                     break
                 }
-                if (all(state$Svec==0) & host_dyn_only == TRUE) {
+                if (sum(state$Svec)==0 & host_dyn_only == TRUE) {
                     message(sprintf("system went extinct prematurely (t=%d)",i,j))
                     break
                 }
@@ -532,9 +528,6 @@ run_sim <- function(R0_init=2,  ## >1
                     state <- do_extinct(state,mut_var,extinct = extinct_h, parasite = FALSE)
                 }
                 dfun("after mutation")
-
-     #!         stopifnot(length(state$Svec)==1)
-     #!         stopifnot(sum(state$Imat)+sum(state$Svec) == N)
 
                 ##** check progress of evolution
                 if (debug2 == TRUE) {
@@ -600,8 +593,6 @@ run_sim <- function(R0_init=2,  ## >1
         lhtrait_sd   <- sqrt(sum(state$Svec*(state$hrtraitvec-lhtrait_mean)^2)/num_S)
         pop_size     <- num_I + num_S
 
-        ## **Decided I wanted to track some more stuff
-        num_strains <- length(state$Imat)
         if (progress) cat(".")
         res[i,] <- c(
           i*rptfreq
@@ -614,14 +605,14 @@ run_sim <- function(R0_init=2,  ## >1
         , lhtrait_sd
         , ltrait_mean
         , ltrait_sd
-        , ifelse(mut_var == "beta", state$gamma, state$beta),sum(state$S, state$I)
+        , ifelse(mut_var == "beta", state$gamma[1,1], state$gamma[1,1])
           )
         ## DRY ...
-        if (all(state$Imat==0) & host_dyn_only == FALSE) {
+        if (sum(state$Imat)==0 & host_dyn_only == FALSE) {
             message(sprintf("system went extinct prematurely (t=%d)",i))
             break
         }
-        if (all(state$Svec==0) & host_dyn_only == TRUE) {
+        if (sum(state$Svec)==0 & host_dyn_only == TRUE) {
             message(sprintf("system went extinct prematurely (t=%d)",i,j))
             break
           }
