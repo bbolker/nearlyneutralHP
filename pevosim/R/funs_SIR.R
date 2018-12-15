@@ -5,7 +5,13 @@
 #######
 
 #######
-## Search ^^ for planned changes
+## Cautions
+#######
+
+## ^^Don't mutate gamma right now, it won't work
+
+#######
+## Search ^^ for completed changes, changes in progress, and planned changes
 #######
 
 ## ^^ 1 Establish _how_ the model is going to work. What does resistance and tolerance do in hosts for the variety of parasite strains?
@@ -18,7 +24,6 @@
 ## ^^   2.3 Convert to an SIS model
 ## ^^ 3 Add parasite evolution along a tradeoff
 ## ^^ 4 Add host evolution with simple costs
-
 
 ######
 ## General notes
@@ -81,14 +86,18 @@ get_mut_h  <- function(state, orig_trait, mut_var, mut_mean, mut_sd, mut_host, m
 
 get_mut_p  <- function(orig_trait, mut_var, mut_mean, mut_sd, mut_type = "shift") {
     if (mut_type=="shift") {
-        new_trait <- orig_trait +
-            rnorm(length(orig_trait),
+        new_trait_pos <- orig_trait$pos_trait +
+            rnorm(length(orig_trait$pos_trait),
               ifelse(mut_var == "beta",  ## **beta and gamma in opposite directions
                mut_mean
             ,  mut_mean*-1)
             , mut_sd)
+
+        new_trait_neg <- orig_trait$neg_trait +
+            rnorm(length(orig_trait$neg_trait), mut_mean, mut_sd)
+
         if (any(is.na(new_trait))) stop("??")
-        return(new_trait)
+        return(list(new_trait_pos = new_trait_pos, new_trait_neg = new_trait_neg))
     } else stop("unknown mut_type")
 }
 
@@ -96,7 +105,8 @@ do_mut     <- function(state, mut_var, mut_link, mut_host, orig_trait, ...) {
     ## **If the mutation is in the parasite
     if (mut_host == FALSE) {
     new_trait        <- get_mut_p(orig_trait, mut_var,...)
-    state$ltraitvec  <- c(state$ltraitvec, new_trait)
+    state$ltraitvec  <- c(state$ltraitvec, new_trait$new_trait_pos)
+    state$palphavec  <- c(state$palphavec, new_trait$new_trait_neg)
     } else {
     ## **else if the mutation is in the host (some adjustments to how state gets updated when the host is evolving)
     ## ^^new vector for host traits
@@ -107,11 +117,9 @@ do_mut     <- function(state, mut_var, mut_link, mut_host, orig_trait, ...) {
     return(state)
 }
 
+## Mutation updating old version (no tradeoff)
 update_mut <- function(state, mut_link, mutated, mutated_host, mut_var) {
 
-   ## ^^Update all trait combinations
-
-   ## ^^Resistance will act as a multiple to parasite intrinsic transmission rate...
    state[[mut_var]] <- t(mut_link$linkinv(outer(state$ltraitvec, state$hrtraitvec,  "/")))
 
    ## ^^...and parasite intrinsic mortality rate following some relationship yet to be determined
@@ -119,6 +127,53 @@ update_mut <- function(state, mut_link, mutated, mutated_host, mut_var) {
 
    ## ^^Tolerance will act as a multiple to parasite intrinsic mortality rate
    state$alpha <- t(outer(state$palphavec, state$hrtraitvec,  "*"))
+
+   ## ^^Update Infected matrix with the new strain, maintaining which S class received that mutation.
+    ## ^^For each mutated strain, Imat gets a new column with a single 1, in the row in which the mutation occurred
+   if (sum(mutated) > 0) {
+     ## ^^probably a rediculous way to do this, but I cant figure out a better way right now
+     ## ^^first X columns of 0s
+     new_mutes   <- matrix(data = 0, nrow = nrow(state$Imat), ncol = sum(mutated))
+     num_mutes   <- rowSums(mutated)
+     which_hosts <- rep(which(num_mutes > 0), num_mutes[which(num_mutes > 0)])
+     for (z in seq_along(which_hosts)) {
+      new_mutes[which_hosts[z], z] <- 1
+     }
+    state$Imat <- cbind(state$Imat, new_mutes)
+   }
+
+   if (sum(mutated_host) > 0) {
+   ## ^^Update Svec (mutated_host is a vector that tracks which host mutated)
+   state$Svec       <- cbind(state$Svec, matrix(rep(1, sum(mutated_host)), nrow = 1))
+   ## ^^Add new rows with 0s for the new S genotypes
+   state$Imat       <- rbind(state$Imat, matrix(data = rep(0, sum(mutated_host)*ncol(state$Imat)), ncol = ncol(state$Imat), nrow = sum(mutated_host)))
+   }
+
+   return(state)
+}
+
+## ^^Update mutant trait values using power-law tradeoff. Give further thought to scales of trait evolution and interaction
+## ^^Don't mutate gamma right now, it won't work
+update_mut_pt <- function(state, mut_link, mutated, mutated_host, mut_var) {
+
+   ## ^^ Scale beta according to tradeoff curve
+   new_par_beta <- scale_beta_alpha(state, ...)
+
+   ## ^^Resistance will act to decrease parasite transmission and virulence following the shape of the tradeoff curve
+     ## Need to think criticall about what scale this should be conducted on. Both logit and probability scale feel like
+      ## they each have problems
+   ## First calculate a tradeoff curve with the same curvature that passes through the parasite's (alpha, beta)
+   cvec <- apply(new_par_beta, 2, pt_calc_c(x, ...))
+
+   ## for each of these tradeoff curves, calculate a new alpha and beta for each host that is infected
+   new_alphas <- new_par_beta * state$hrtraitvec
+   new_betas <- apply(cvec, 2, function(x) power_tradeoff(x, alpha = new_alphas, d = d, curv = power_exp))
+
+   state$beta  <- new_beta
+   state$alpha <- new_alphas
+
+   ## ^^Further adjust alpha via tolerance, which will act as a multiple to parasite intrinsic mortality rate
+   state$alpha <- state$alpha * t(state$httraitvec)
 
    ## ^^Update Infected matrix with the new strain, maintaining which S class received that mutation.
     ## ^^For each mutated strain, Imat gets a new column with a single 1, in the row in which the mutation occurred
@@ -187,6 +242,31 @@ data = rmultinom(
 , nrow = nrow(beta)
 , byrow = TRUE
 )
+
+}
+
+## ^^Power law relationship between alpha and beta
+power_tradeoff <- function (c, alpha, d, curv) {
+  c * (alpha - d) ^ (1 / curv)
+}
+pt_calc_c <- function (alpha, d, curv, beta) {
+ beta / ( (alpha - d) ^ (1 / curv) )
+}
+
+## ^^Scale parasite beta and alpha evolution by the tradeoff
+scale_beta_alpha <- function (state, ...) {
+
+## ^^Assume that parasite evolution has already taken place
+
+## ^^Determine the beta of a given pathogen strain | that pathogen's current alpha value
+  ## Maximum possible beta
+max_beta <- power_tradeoff(c = power_c, alpha = plogis(state$palphavec), d = d, curv = power_c)
+
+## Adjust parasite alpha based on how beta has shifted
+beta_shift <- (plogis(new_trait) * max_beta) / (plogis(orig_trait) *  max_beta)
+
+## Alpha shift. For each beta shift choose an alpha shift that is in the same direction but somewhat random.
+#alpha_shift <- apply(beta_shift, 2, function(x) ifelse(x > 1, runif(1, 1, x), runif(1, x, 1)))
 
 }
 
@@ -275,6 +355,8 @@ run_sim <- function(R0_init=2,  ## >1
                     mut_host_res_bias=0.5,   ## ^^0.5 means equal probability of evolving resistance or tolerance
                     res0=1,   ## ^^starting host resistance value
                     tol0=1,   ## ^^starting host tolerance value
+                    power_c=0.75,  ## ^^power law tradeoff scaling
+                    power_exp=2,   ## ^^power law tradeoff exponent
                     Imat=NULL,
                     host_dyn_only=FALSE,
                     dt=1,
@@ -372,10 +454,8 @@ run_sim <- function(R0_init=2,  ## >1
     ## ^^for no infection (to check host dynamics in the absence of infection)
     ## ^^Maybe not the _most_ iffecient place/way to do this, but I think makes the least clutter
     if (host_dyn_only == TRUE) {
-#      state$beta     <- 0
-      state$Imat[1,1] <- 0
-      state$Svec[1,1] <- N
-#      mu             <- 0
+      state$Imat[1, 1] <- 0
+      state$Svec[1, 1] <- N
     }
 
     dfun("init")
@@ -507,7 +587,11 @@ run_sim <- function(R0_init=2,  ## >1
                     state <- do_mut(state,
                                     mut_var    = mut_var,
                                     mut_link,
-                                    orig_trait = rep(state$ltraitvec, colSums(mutated)), ## ^^Just care about intrinsic nature of a strain
+                                    orig_trait =
+                        list(
+                        pos_trait = rep(state$ltraitvec, colSums(mutated)),
+                        neg_trait = rep(state$palphavec, colSums(mutated)),
+                          ) ## ^^Just care about intrinsic nature of a strain
                                     mut_mean   = mut_mean,
                                     mut_sd     = mut_sd,
                                     mut_host   = FALSE,
