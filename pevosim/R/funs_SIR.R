@@ -96,7 +96,7 @@ get_mut_p  <- function(orig_trait, mut_var, mut_mean, mut_sd, mut_type = "shift"
         new_trait_neg <- orig_trait$neg_trait +
             rnorm(length(orig_trait$neg_trait), mut_mean, mut_sd)
 
-        if (any(is.na(new_trait))) stop("??")
+        if (any(is.na(c(new_trait_pos, new_trait_neg)))) stop("??")
         return(list(new_trait_pos = new_trait_pos, new_trait_neg = new_trait_neg))
     } else stop("unknown mut_type")
 }
@@ -104,7 +104,7 @@ get_mut_p  <- function(orig_trait, mut_var, mut_mean, mut_sd, mut_type = "shift"
 do_mut     <- function(state, mut_var, mut_link, mut_host, orig_trait, ...) {
     ## **If the mutation is in the parasite
     if (mut_host == FALSE) {
-    new_trait        <- get_mut_p(orig_trait, mut_var,...)
+    new_trait        <- get_mut_p(orig_trait, mut_var, ...)
     state$ltraitvec  <- c(state$ltraitvec, new_trait$new_trait_pos)
     state$palphavec  <- c(state$palphavec, new_trait$new_trait_neg)
     } else {
@@ -154,26 +154,26 @@ update_mut <- function(state, mut_link, mutated, mutated_host, mut_var) {
 
 ## ^^Update mutant trait values using power-law tradeoff. Give further thought to scales of trait evolution and interaction
 ## ^^Don't mutate gamma right now, it won't work
-update_mut_pt <- function(state, mut_link, mutated, mutated_host, mut_var) {
+update_mut_pt <- function(state, orig_trait, new_trait, power_c, power_exp, mut_link, mutated, mutated_host, mut_var, ...) {
 
    ## ^^ Scale beta according to tradeoff curve
-   new_par_beta <- scale_beta_alpha(state, ...)
+   new_par_beta <- scale_beta_alpha(new_trait, orig_trait, power_c, power_exp, ...)
 
    ## ^^Resistance will act to decrease parasite transmission and virulence following the shape of the tradeoff curve
      ## Need to think criticall about what scale this should be conducted on. Both logit and probability scale feel like
       ## they each have problems
    ## First calculate a tradeoff curve with the same curvature that passes through the parasite's (alpha, beta)
-   cvec <- apply(new_par_beta, 2, pt_calc_c(x, ...))
+   cvec <- pt_calc_c(beta = new_par_beta, alpha = plogis(new_trait$neg_trait), curv = power_exp)
 
    ## for each of these tradeoff curves, calculate a new alpha and beta for each host that is infected
-   new_alphas <- new_par_beta * state$hrtraitvec
-   new_betas <- apply(cvec, 2, function(x) power_tradeoff(x, alpha = new_alphas, d = d, curv = power_exp))
+   new_alphas <- t(outer(new_par_beta, state$hrtraitvec, "*"))
+   new_betas  <- matrix(power_tradeoff(cvec, alpha = c(new_alphas), curv = power_exp), nrow = nrow(new_alphas), ncol = ncol(new_alphas))
 
-   state$beta  <- new_beta
+   state$beta  <- new_betas
    state$alpha <- new_alphas
 
    ## ^^Further adjust alpha via tolerance, which will act as a multiple to parasite intrinsic mortality rate
-   state$alpha <- state$alpha * t(state$httraitvec)
+   state$alpha <- sweep(state$alpha, 2, matrix(state$httraitvec, ncol = 1), "*")
 
    ## ^^Update Infected matrix with the new strain, maintaining which S class received that mutation.
     ## ^^For each mutated strain, Imat gets a new column with a single 1, in the row in which the mutation occurred
@@ -246,27 +246,32 @@ data = rmultinom(
 }
 
 ## ^^Power law relationship between alpha and beta
-power_tradeoff <- function (c, alpha, d, curv) {
-  c * (alpha - d) ^ (1 / curv)
+power_tradeoff <- function (alpha, c, curv) {
+  c * alpha ^ (1 / curv)
 }
-pt_calc_c <- function (alpha, d, curv, beta) {
- beta / ( (alpha - d) ^ (1 / curv) )
+pt_calc_c <- function (alpha, beta, curv) {
+ beta / ( alpha ^ (1 / curv) )
 }
 
 ## ^^Scale parasite beta and alpha evolution by the tradeoff
-scale_beta_alpha <- function (state, ...) {
+scale_beta_alpha <- function (new_trait, orig_trait, power_c, power_exp, ...) {
 
 ## ^^Assume that parasite evolution has already taken place
 
 ## ^^Determine the beta of a given pathogen strain | that pathogen's current alpha value
   ## Maximum possible beta
-max_beta <- power_tradeoff(c = power_c, alpha = plogis(state$palphavec), d = d, curv = power_c)
+max_beta <- power_tradeoff(c = power_c, alpha = plogis(new_trait$neg_trait), curv = power_exp)
 
-## Adjust parasite alpha based on how beta has shifted
-beta_shift <- (plogis(new_trait) * max_beta) / (plogis(orig_trait) *  max_beta)
+## realized beta
+realized_beta <- (plogis(new_trait$pos_trait) * max_beta)
+
+## proportional change in beta relative to where it came from. (option to adjust alpha as correlated evolution instead of an evolving trait)
+#beta_shift <-  realized beta / (plogis(orig_trait$pos_trait) *  max_beta)
 
 ## Alpha shift. For each beta shift choose an alpha shift that is in the same direction but somewhat random.
 #alpha_shift <- apply(beta_shift, 2, function(x) ifelse(x > 1, runif(1, 1, x), runif(1, x, 1)))
+
+return(realized_beta)
 
 }
 
@@ -408,10 +413,7 @@ run_sim <- function(R0_init=2,  ## >1
     Svec <- N-Imat
 
     ## R0 = beta*N/(gamma + d)
-    beta0 <- R0_init*(gamma0+d)/N
-
-    ## ^^Assume some start for alpha, for now assume 1 (set init_alpha to 1), build in tradeoff curve later
-    alpha0 <- alpha0
+    beta0 <- R0_init*(gamma0+d+alpha0)/N
 
     ## set up initial trait vectors
     if (mut_var=="beta") {
@@ -429,14 +431,16 @@ run_sim <- function(R0_init=2,  ## >1
     }
 
     ## ^^Alpha (intrinsic parasite mortality pressure)
-    palphavec  <- rep(alpha0, length(ltraitvec))
+    palphavec  <- mut_link$linkfun(alpha0)
 
     ## ^^Initial trait vec for the host
     hrtraitvec <- rep(res0, length(Svec))
     httraitvec <- rep(tol0, length(Svec))
 
     ## ^^Set up initial alpha matrix
-    alpha0 <- outer(httraitvec, palphavec, "*")
+    ## Need to scale alpha and beta appropriately according to starting resistance and tolerance.
+      ## However, for now just assume resistance and tolerance start at 1
+   # alpha0 <- outer(httraitvec, palphavec, "*")
 
     ## parameters structure (parallel vectors), so these can
     ## be modified via function and passed back ...
@@ -580,22 +584,22 @@ run_sim <- function(R0_init=2,  ## >1
 
                 assign("mut_check", mutated, .GlobalEnv)
 
+                ## ^^Need parasite unevolved state for two functions at this point, so just save it
+                orig_trait_p <- list(pos_trait = rep(state$ltraitvec, colSums(mutated))
+                      , neg_trait = rep(state$palphavec, colSums(mutated)))
                 ## now do mutation ...
                 tot_mut <- sum(mutated)
                 ## **mut parasite first. Another choice of order that may matter
                 if (tot_mut>0) {
-                    state <- do_mut(state,
-                                    mut_var    = mut_var,
-                                    mut_link,
-                                    orig_trait =
-                        list(
-                        pos_trait = rep(state$ltraitvec, colSums(mutated)),
-                        neg_trait = rep(state$palphavec, colSums(mutated)),
-                          ) ## ^^Just care about intrinsic nature of a strain
-                                    mut_mean   = mut_mean,
-                                    mut_sd     = mut_sd,
-                                    mut_host   = FALSE,
-                                    mut_type   = mut_type)
+                    state <- do_mut(
+                      state
+                    , mut_var     = mut_var
+                    , mut_link
+                    , orig_trait  = orig_trait_p  ## ^^Just care about intrinsic nature of a strain
+                    , mut_mean    = mut_mean
+                    , mut_sd      = mut_sd
+                    , mut_host    = FALSE
+                    , mut_type    = mut_type)
                 }
 
                 ## **host mutations
@@ -627,8 +631,14 @@ run_sim <- function(R0_init=2,  ## >1
 
                 ## Update state after host and parasite mutations
                 if (tot_mut > 0 | sum(mutated_host) > 0) {
-                state <- update_mut(
+                state <- update_mut_pt(
                     state        = state
+                  , orig_trait   = orig_trait_p
+                  , new_trait    = list(  ## ^^New trait values (correspond in order of old trait values from which they evolved)
+                      pos_trait = state$ltraitvec[(length(state$ltraitvec) - sum(mutated) + 1): length(state$ltraitvec)]
+                    , neg_trait = state$palphavec[(length(state$palphavec) - sum(mutated) + 1): length(state$palphavec)])
+                  , power_c      = power_c
+                  , power_exp    = power_exp
                   , mut_link     = mut_link
                   , mutated      = mutated
                   , mutated_host = mutated_host
