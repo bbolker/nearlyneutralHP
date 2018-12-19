@@ -4,8 +4,6 @@
 ## as well as host reproduction
 #######
 
-library(arm); library(ggplot2); library(gridExtra); source("ggplot_theme.R")
-
 #######
 ## Cautions / General notes
 #######
@@ -122,7 +120,7 @@ update_mut_pt    <- function (state, power_c, power_exp, mut_link_p, mut_link_h,
    state$beta   <- new_betas
 
    ## Further adjust alpha via tolerance, which will act as a multiple to parasite intrinsic mortality rate
-   state$alpha  <- sweep(state$alpha, 2, matrix(mut_link_h$linkinv(state$httraitvec), ncol = 1), "*")
+   state$alpha  <- get_alpha_tol(state, numcol = ncol(state$alpha), numrow = nrow(state$alpha), mut_link_h = mut_link_h)
 
    ## Update Infected matrix with the new strain, maintaining which S class received that mutation.
     ## For each mutated strain, Imat gets a new column with a single 1, in the row in which the mutation occurred
@@ -182,14 +180,16 @@ do_extinct       <- function (state, mut_var, extinct, parasite) {
   ## Again, will eventually need to clean this up
     state$alpha      <- state$alpha[,-extinct, drop = FALSE]
     state$ltraitvec  <- state$ltraitvec[-extinct, drop = FALSE]
+    state$palphavec  <- state$palphavec[-extinct, drop = FALSE]
     state$Imat       <- state$Imat[,-extinct, drop = FALSE]
  ## If a host strain has gone extinct remove a row
   } else {
     state[[mut_var]] <- state[[mut_var]][-extinct, , drop = FALSE]
     state$alpha      <- state$alpha[-extinct, , drop = FALSE]
     state$hrtraitvec <- state$hrtraitvec[-extinct, drop = FALSE]
+    state$httraitvec <- state$httraitvec[-extinct, drop = FALSE]
     state$Imat       <- state$Imat[-extinct, , drop = FALSE]
-    state$Svec       <- state$Svec[-extinct, drop = FALSE]
+    state$Svec       <- state$Svec[, -extinct, drop = FALSE]
   }
     return(state)
 }
@@ -251,6 +251,16 @@ get_birth_bal    <- function (state, d) {
     birth <- matrix(rep(0, length(state$Svec)), nrow = 1)
   }
  birth
+
+}
+## Function to wrap apply into returning a matrix (problems with always needing a matrix and reducing to a vector sometimes)
+get_alpha_tol <- function (state, numcol, numrow, mut_link_h) {
+
+  matrix(
+      apply(state$alpha, 2, function (x) x * matrix(mut_link_h$linkinv(state$httraitvec), ncol = 1))
+    , nrow = numrow
+    , ncol   = numcol
+  )
 
 }
 ## Power law relationship between alpha and beta
@@ -318,7 +328,7 @@ rbinom_mat       <- function (n, size, prob, nrow, ncol) {
 ##' @param minval minimum value
 ##' @param maxval maximum value
 ##' @export
-multlogit <- function(minval = 0, maxval = 1, scale = 1) {
+multlogit        <- function(minval = 0, maxval = 1, scale = 1) {
     delta <- maxval-minval
     ## R CMD check will always complain about this.
     ## C_logit_link is not otherwise externally accessible.
@@ -409,6 +419,7 @@ run_sim <- function(
  , seed                = NULL
  , progress            = FALSE
  , debug               = FALSE
+ , debug2              = FALSE
  , useCpp              = FALSE) {
 
     if (round(N)!=N) {
@@ -501,7 +512,7 @@ run_sim <- function(
 
      ## Added tracking host responses
     res <- as.data.frame(matrix(
-      NA, nrow = nrpt, ncol = 11
+      NA, nrow = nrpt, ncol = 15
     , dimnames = list(
       NULL
     , c("time"
@@ -510,8 +521,10 @@ run_sim <- function(
       , "num_I"
       , "num_I_strains"
       , "pop_size"
-      , paste0(c("mean_hl", "sd_hl"), mut_var)
+      , paste0(c("mean_hl", "sd_hl"), "res")
+      , paste0(c("mean_hl", "sd_hl"), "tol")
       , paste0(c("mean_pl", "sd_pl"), mut_var)
+      , paste0(c("mean_pl", "sd_pl"), "alpha")
       , ifelse(mut_var == "beta", "gamma", "beta")  ##** list the non-evolving param
       ))))
 
@@ -524,13 +537,19 @@ run_sim <- function(
                 ## cat("betavec:",betavec,"\n")
                 ## cat("Imat:",Imat,"\n")
 
+               ## Cut and paste to wherever there is a problem
+                if (debug2 == TRUE) {
+                  print(paste(i, j, sep = "  -  "))
+                  print(str(state$Svec))
+                  assign("state_check", state, .GlobalEnv)
+                  if (i == 5 & j == 2) browser()  ## Fill these in manually with printed i and j
+                }
+
                 ## [Step 1]: Birth. Not accessible to death or infection until the next time step.
 
-                ## Ugly temp form of density dependence here for now keeping per-capita birth equal to the total death rate of both S and I
-                 ## Switch to logistic growth possibly
-                #birth      <- get_birth_bal(state, d = d0)
-                ## dd birth currently set so natural birth and death balances at N
-                 ## Later can be set up so that investment in resistance or tolerance changes b rate
+                ## Two options currently for birth. Balancing (birth = all death) and density dependent (decreasing with N)
+                 ## S and I both reproduce here currrently: can change later so that investment in res and tol changes b (or I vs S)
+               #birth      <- get_birth_bal(state, d = d0)
                 birth      <- get_birth_dd(state, N0 = N, b0 = b, decay = b_decay)
 
                 ## [Step 2]: Death of S.
@@ -569,8 +588,8 @@ run_sim <- function(
                 mutated_host_r <- rbinom(length(mutated_host), size = mutated_host, prob = mut_host_res_bias)
                 mutated_host_t <- mutated_host - mutated_host_r
 
-                stopifnot(length(recover)==length(mutated))
-                stopifnot(length(newinf)==length(state$Imat))
+                stopifnot(length(recover) == length(mutated))
+                stopifnot(length(newinf) == length(state$Imat))
 
                 ## [Step 8]: Update Infecteds.
                 state$Imat <- state$Imat - recover + newinf - mutated
@@ -586,7 +605,7 @@ run_sim <- function(
                 tot_mut <- sum(mutated)
 
                 ## Mut parasite first. Another choice of order that may/may not matter
-                if (tot_mut>0) {
+                if (tot_mut > 0) {
                     state <- do_mut(
                       state
                     , mut_var     = mut_var
@@ -634,11 +653,11 @@ run_sim <- function(
                 }
 
                 if (sum(state$Imat)==0 & host_dyn_only == FALSE) {
-                    message(sprintf("system went extinct prematurely (t=%d)",i))
+                    message(sprintf("system went extinct prematurely (t=%d)", i))
                     break
                 }
                 if (sum(state$Svec)==0 & host_dyn_only == TRUE) {
-                    message(sprintf("system went extinct prematurely (t=%d)",i,j))
+                    message(sprintf("system went extinct prematurely (t=%d)", i))
                     break
                 }
 
@@ -660,10 +679,14 @@ run_sim <- function(
         num_I        <- sum(state$Imat)
         ltrait_mean  <- sum(colSums(state$Imat)*state$ltraitvec)/num_I
         ltrait_sd    <- sqrt(sum(colSums(state$Imat)*(state$ltraitvec-ltrait_mean)^2)/num_I)
+        lalpha_mean  <- sum(colSums(state$Imat)*state$palphavec)/num_I
+        lalpha_sd    <- sqrt(sum(colSums(state$Imat)*(state$palphavec-ltrait_mean)^2)/num_I)
         num_S        <- sum(state$Svec)
         S_tot        <- length(state$Svec)
-        lhtrait_mean <- sum(state$Svec*state$hrtraitvec)/num_S
-        lhtrait_sd   <- sqrt(sum(state$Svec*(state$hrtraitvec-lhtrait_mean)^2)/num_S)
+        lhres_mean   <- sum(state$Svec*state$hrtraitvec)/num_S
+        lhres_sd     <- sqrt(sum(state$Svec*(state$hrtraitvec-lhres_mean)^2)/num_S)
+        lhtol_mean   <- sum(state$Svec*state$httraitvec)/num_S
+        lhtol_sd     <- sqrt(sum(state$Svec*(state$httraitvec-lhtol_mean)^2)/num_S)
         pop_size     <- num_I + num_S
 
         if (progress) cat(".")
@@ -674,19 +697,23 @@ run_sim <- function(
         , num_I
         , I_tot
         , pop_size
-        , lhtrait_mean
-        , lhtrait_sd
+        , lhres_mean
+        , lhres_sd
+        , lhtol_mean
+        , lhtol_sd
         , ltrait_mean
         , ltrait_sd
+        , lalpha_mean
+        , lalpha_sd
         , ifelse(mut_var == "beta", state$gamma[1,1], state$gamma[1,1]))
 
         ## DRY ...
         if (sum(state$Imat) == 0 & host_dyn_only == FALSE) {
-            message(sprintf("system went extinct prematurely (t=%d)",i))
+            message(sprintf("system went extinct prematurely (t=%d)", i))
             break
         }
         if (sum(state$Svec) == 0 & host_dyn_only == TRUE) {
-            message(sprintf("system went extinct prematurely (t=%d)",i,j))
+            message(sprintf("system went extinct prematurely (t=%d)", i))
             break
         }
 
