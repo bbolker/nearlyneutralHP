@@ -68,18 +68,34 @@ get_mut_h        <- function (state, orig_trait, mut_var, mut_mean, mut_sd, res_
         return(list(res_trait = new_trait_r, tol_trait = new_trait_t))
     } else stop("unknown mut_type")
 }
-get_mut_p        <- function (orig_trait, mut_var, mut_mean, mut_sd, mut_type = "shift") {
+get_mut_p        <- function (orig_trait, mut_var, power_c, power_exp, mut_link_p, mut_mean, mut_sd, mut_type = "shift") {
 
    if (mut_type=="shift") {
+
+     ## Parasite first evolves in alpha
+        new_trait_neg <- orig_trait$neg_trait +
+            rnorm(length(orig_trait$neg_trait), mut_mean*-1, mut_sd) ## Parasites evolve to increase mortality rate
+
+     ## but evolving in alpha necessarily changes what parasite intrinsic beta means, because parasite intrinsic beta
+      ## is how close a parasite is to maximizing beta at the current alpha.
+
+     ## To make alpha evolve as an independent trait, the beta of the new strain needs to be updated so that the parasite
+      ## is the same proportional distance to its optimum on the tradeoff curve
+
+     ## Find optimum possible beta with the new alpha, and determine how close original beta would be to the new optima
+        orig_beta <- power_tradeoff(alpha = mut_link_p$linkinv(orig_trait$neg_trait)
+          , c = power_c, curv = power_exp) * mut_link_p$linkinv(orig_trait$pos_trait)
+
+      ## Propagate a new beta to accompany the new alpha from which beta can independently evolve
+        orig_trait$pos_trait <- logit(orig_beta / power_tradeoff(alpha = mut_link_p$linkinv(new_trait_neg)
+          , c = power_c, curv = power_exp))
+
         new_trait_pos <- orig_trait$pos_trait +
             rnorm(length(orig_trait$pos_trait),
-              ifelse(mut_var == "beta",  ## **beta and gamma in opposite directions
+              ifelse(mut_var == "beta",  ## Beta and gamma in opposite directions
                mut_mean
             ,  mut_mean*-1)
             , mut_sd)
-
-        new_trait_neg <- orig_trait$neg_trait +
-            rnorm(length(orig_trait$neg_trait), mut_mean, mut_sd)
 
         if (any(is.na(c(new_trait_pos, new_trait_neg)))) stop("??")
         return(list(new_trait_pos = new_trait_pos, new_trait_neg = new_trait_neg))
@@ -101,7 +117,7 @@ do_mut           <- function (state, mut_var, mut_host, orig_trait, ...) {
 }
 ## Update mutant trait values using power-law tradeoff. Give further thought to scales of trait evolution and interaction
  ## Don't mutate gamma right now, it won't work
-update_mut_pt    <- function (state, power_c, power_exp, mut_link_p, mut_link_h, mutated, mutated_host, mut_var, ...) {
+update_mut_pt    <- function (state, orig_trait, power_c, power_exp, mut_link_p, mut_link_h, mutated, mutated_host, mut_var, ...) {
 
    ## Scale beta according to tradeoff curve
    new_par_beta <- scale_beta_alpha(state, power_c, power_exp, mut_link_p, ...)
@@ -113,14 +129,16 @@ update_mut_pt    <- function (state, power_c, power_exp, mut_link_p, mut_link_h,
    cvec         <- pt_calc_c(beta = new_par_beta, alpha = mut_link_p$linkinv(state$palphavec), curv = power_exp)
 
    ## For each of these tradeoff curves, calculate a new alpha and beta for each host that is infected
-   new_alphas   <- t(outer(mut_link_p$linkinv(state$palphavec), mut_link_h$linkinv(state$hrtraitvec), "*"))
-   new_betas    <- matrix(power_tradeoff(cvec, alpha = c(new_alphas), curv = power_exp), nrow = nrow(new_alphas), ncol = ncol(new_alphas))
+  # new_alphas  <- t(outer(mut_link_p$linkinv(state$palphavec), mut_link_h$linkinv(state$hrtraitvec), "*"))
+   new_alphas   <- t(mut_link_p$linkinv(outer(state$palphavec, mut_link_h$linkinv(state$hrtraitvec), "/")))
+   new_betas    <- matrix(power_tradeoff(rep(cvec, each = nrow(new_alphas)), alpha = c(new_alphas)
+     , curv = power_exp), nrow = nrow(new_alphas), ncol = ncol(new_alphas))
 
    state$alpha  <- new_alphas
    state$beta   <- new_betas
 
    ## Further adjust alpha via tolerance, which will act as a multiple to parasite intrinsic mortality rate
-   state$alpha  <- get_alpha_tol(state, numcol = ncol(state$alpha), numrow = nrow(state$alpha), mut_link_h = mut_link_h)
+   state$alpha  <- get_alpha_tol(state, numcol = ncol(state$alpha), numrow = nrow(state$alpha), mut_link_h, mut_link_p)
 
    ## Update Infected matrix with the new strain, maintaining which S class received that mutation.
     ## For each mutated strain, Imat gets a new column with a single 1, in the row in which the mutation occurred
@@ -137,7 +155,8 @@ update_mut_pt    <- function (state, power_c, power_exp, mut_link_p, mut_link_h,
    ## Update Svec (mutated_host is a vector that tracks which host mutated)
    state$Svec       <- cbind(state$Svec, matrix(rep(1, sum(mutated_host)), nrow = 1))
    ## Add new rows with 0s for the new S genotypes
-   state$Imat       <- rbind(state$Imat, matrix(data = rep(0, sum(mutated_host)*ncol(state$Imat)), ncol = ncol(state$Imat), nrow = sum(mutated_host)))
+   state$Imat       <- rbind(state$Imat, matrix(data = rep(0, sum(mutated_host)*ncol(state$Imat))
+     , ncol = ncol(state$Imat), nrow = sum(mutated_host)))
    }
 
    return(state)
@@ -206,7 +225,7 @@ matrix(
 data = rmultinom(
    1
  , size = x
- , prob = beta
+ , prob = beta * Imat
    )
 , ncol = ncol(beta)
 , nrow = nrow(beta)
@@ -254,12 +273,14 @@ get_birth_bal    <- function (state, d) {
 
 }
 ## Function to wrap apply into returning a matrix (problems with always needing a matrix and reducing to a vector sometimes)
-get_alpha_tol <- function (state, numcol, numrow, mut_link_h) {
+get_alpha_tol    <- function (state, numcol, numrow, mut_link_h, mut_link_p) {
 
+  mut_link_p$linkinv(
   matrix(
-      apply(state$alpha, 2, function (x) x * matrix(mut_link_h$linkinv(state$httraitvec), ncol = 1))
+      apply(mut_link_p$linkfun(state$alpha), 2, function (x) x / matrix(mut_link_h$linkinv(state$httraitvec), ncol = 1))
     , nrow = numrow
     , ncol   = numcol
+  )
   )
 
 }
@@ -292,16 +313,16 @@ return(realized_beta)
 
 }
 ## Calculate starting trait values for parasite and host | desired starting R0
-calc_startvals   <- function (alpha0, res0, tol0, gamma, d, R0_init, N, power_c, power_exp, mut_link_p) {
+calc_startvals   <- function (alpha0, res0, tol0, gamma0, d, R0_init, N, power_c, power_exp, mut_link_h, mut_link_p) {
 
 ## alpha only considering host resistance
-alpha_r    <- alpha0 * res0
+alpha_r    <- mut_link_p$linkinv(mut_link_p$linkfun(alpha0) / res0)
 
 ## alpha given host resistance and tolerance
-alpha_rt   <- alpha_r * tol0
+alpha_rt   <- mut_link_p$linkinv(mut_link_p$linkfun(alpha_r) / tol0)
 
 ## From these alphas back calculate joint beta,
-joint_beta <- R0_init * (gamma + d + alpha_rt) / N
+joint_beta <- R0_init * (gamma0 + d + alpha_rt) / N
 
 ## then the c on which the suboptimal strain resides,
 needed_c   <- pt_calc_c(alpha = alpha_r, beta = joint_beta, curv = power_exp)
@@ -362,11 +383,11 @@ multlogit        <- function(minval = 0, maxval = 1, scale = 1) {
 #' @param mut_var which variable(s) mutate?
 #' @param mut_link_p link function for mutation for parasite
 #' @param mut_link_h link function for mutation for host
-#' @param mut_host_sd_shift **Host multiple of parasite sd
-#' @param mut_host_mean_shift **Host multiple of parasite mean (not set up yet)
-#' @param mut_host_mu_shift **Host multiple of parasite mean (not set up yet). On the wrong scale (muliple on prob scale) but ok for now because of tiny prob....
-#' @param res0 ## ^^starting host resistance value
-#' @param tol0 ## ^^starting host tolerance value
+#' @param mut_host_sd_shift Host multiple of parasite sd
+#' @param mut_host_mean_shift Host multiple of parasite mean (not set up yet)
+#' @param mut_host_mu_shift Host multiple of parasite mean (not set up yet). On the wrong scale (muliple on prob scale) but ok for now because of tiny prob....
+#' @param res0 ## starting host resistance value
+#' @param tol0 ## starting host tolerance value
 #' @param Imat initial vector of infected numbers
 #' @param mu mutation probability per replication
 #' @param b host birth rate (for now assume only S births, but this may have to change) -- Currently birth rate isn't used, d is used to balance pop size
@@ -420,6 +441,7 @@ run_sim <- function(
  , progress            = FALSE
  , debug               = FALSE
  , debug2              = FALSE
+ , debug3              = FALSE
  , useCpp              = FALSE) {
 
     if (round(N)!=N) {
@@ -472,9 +494,9 @@ run_sim <- function(
        ## to the intrinsic parasite scale and used to calculate a true starting alpha (also called alpha0 here
         ## that is based on both parasite and host triats)
 
-    startvals <- calc_startvals(alpha0, res0, tol0, gamma, d, R0_init, N, power_c, power_exp, mut_link_p)
-    beta0     <- startvals$joint_beta
-    ltraitvec <- startvals$intrinsic_beta
+    startvals  <- calc_startvals(alpha0, res0, tol0, gamma0, d, R0_init, N, power_c, power_exp, mut_link_h, mut_link_p)
+    beta0      <- startvals$joint_beta
+    ltraitvec  <- startvals$intrinsic_beta
 
     ## Alpha (intrinsic parasite mortality pressure)
     palphavec  <- mut_link_p$linkfun(alpha0)
@@ -488,7 +510,7 @@ run_sim <- function(
 
     ## Parameters structure (parallel vectors), so these can
      ## Be modified via function and passed back ...
-    state <- list(
+    state      <- list(
       beta       = as.matrix(beta0)
     , gamma      = as.matrix(gamma0) ## ^^as will gamma (make matrix after, because ltraitvec needs to remain a vector)
     , alpha      = as.matrix(alpha0)
@@ -542,7 +564,7 @@ run_sim <- function(
                   print(paste(i, j, sep = "  -  "))
                   print(str(state$Svec))
                   assign("state_check", state, .GlobalEnv)
-                  if (i == 5 & j == 2) browser()  ## Fill these in manually with printed i and j
+                  if (i == 10 & j == 5) browser()  ## Fill these in manually with printed i and j
                 }
 
                 ## [Step 1]: Birth. Not accessible to death or infection until the next time step.
@@ -578,6 +600,8 @@ run_sim <- function(
                   mutated  <- rbinom_mat(n = nrow(newinf), size = newinf, prob = mu, nrow = nrow(newinf), ncol = ncol(newinf))
                }
 
+                if (debug3 == TRUE) mutated[1,1] <- 2
+
                 ## [Step 7]: Mutation of new hosts (during birth).
                 ## For now assume that S hosts are the only hosts reproducing -- a common assumption, unclear if it should stay.
                  ## Probably not when costs of resistance and tolerance are included
@@ -587,6 +611,8 @@ run_sim <- function(
                 ## Of the mutated hosts sort into resistance and tolerance mutants
                 mutated_host_r <- rbinom(length(mutated_host), size = mutated_host, prob = mut_host_res_bias)
                 mutated_host_t <- mutated_host - mutated_host_r
+
+                if (debug3 == TRUE) mutated_host <- 2; mutated_host_r <- 1; mutated_host_t <- 1
 
                 stopifnot(length(recover) == length(mutated))
                 stopifnot(length(newinf) == length(state$Imat))
@@ -604,18 +630,24 @@ run_sim <- function(
                 ## [Step 9]: Find new phenotypes for mutated parasites and hosts.
                 tot_mut <- sum(mutated)
 
+                ## Original parasite taits that mutants arise from. Need this for later
+                orig_trait <- list(
+                   pos_trait = rep(state$ltraitvec, colSums(mutated))
+                 , neg_trait = rep(state$palphavec, colSums(mutated)))
+
                 ## Mut parasite first. Another choice of order that may/may not matter
                 if (tot_mut > 0) {
                     state <- do_mut(
                       state
                     , mut_var     = mut_var
-                    , orig_trait  = list(
-                        pos_trait = rep(state$ltraitvec, colSums(mutated))
-                      , neg_trait = rep(state$palphavec, colSums(mutated)))  ## ^^Just care about intrinsic nature of a strain
+                    , orig_trait  = orig_trait  ## ^^Just care about intrinsic nature of a strain
                     , mut_mean    = mut_mean
                     , mut_sd      = mut_sd
                     , mut_host    = FALSE
-                    , mut_type    = mut_type)
+                    , mut_type    = mut_type
+                    , power_c     = power_c
+                    , power_exp   = power_exp
+                    , mut_link_p  = mut_link_p)
                 }
 
                 ## Host mutations
@@ -643,6 +675,7 @@ run_sim <- function(
                 if (tot_mut > 0 | sum(mutated_host) > 0) {
                 state <- update_mut_pt(
                     state        = state
+                  , orig_trait   = orig_trait
                   , power_c      = power_c
                   , power_exp    = power_exp
                   , mut_link_p   = mut_link_p
