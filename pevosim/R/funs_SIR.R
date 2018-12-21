@@ -46,8 +46,8 @@ get_mut_h        <- function (state, orig_trait, mut_var, mut_mean, mut_sd, res_
         new_trait_r <- orig_trait$res_mut +
             rnorm(length(orig_trait$res_mut)
             , ifelse(mut_var == "beta"
-              , mut_mean*-1/mut_host_mean_shift
-              , mut_mean/mut_host_mean_shift)
+              , mut_mean/mut_host_mean_shift
+              , mut_mean*-1/mut_host_mean_shift)
             , mut_sd/mut_host_sd_shift)  ## allow the sd for the host to be a multiple of the sd for the pathogen (1 for equal)
 
       ## Second, retrieve resistance values for the new tolerant mutatnts
@@ -57,8 +57,8 @@ get_mut_h        <- function (state, orig_trait, mut_var, mut_mean, mut_sd, res_
          new_trait_t <- orig_trait$tol_mut +
             rnorm(length(orig_trait$tol_mut)
             , ifelse(mut_var == "beta"
-              , mut_mean*-1/mut_host_mean_shift
-              , mut_mean/mut_host_mean_shift)
+              , mut_mean/mut_host_mean_shift
+              , mut_mean*-1/mut_host_mean_shift)
             , mut_sd/mut_host_sd_shift)  ## allow the sd for the host to be a multiple of the sd for the pathogen (1 for equal)
 
         repeated_trait_t <- rep(state$httraitvec, res_mut)
@@ -130,12 +130,17 @@ update_mut_pt    <- function (state, orig_trait, power_c, power_exp, mut_link_p,
 
    ## For each of these tradeoff curves, calculate a new alpha and beta for each host that is infected
   # new_alphas  <- t(outer(mut_link_p$linkinv(state$palphavec), mut_link_h$linkinv(state$hrtraitvec), "*"))
-   new_alphas   <- t(mut_link_p$linkinv(outer(state$palphavec, mut_link_h$linkinv(state$hrtraitvec), "/")))
+   new_alphas   <- t(mut_link_p$linkinv(outer(state$palphavec, state$hrtraitvec, "-")))
    new_betas    <- matrix(power_tradeoff(rep(cvec, each = nrow(new_alphas)), alpha = c(new_alphas)
      , curv = power_exp), nrow = nrow(new_alphas), ncol = ncol(new_alphas))
 
    state$alpha  <- new_alphas
    state$beta   <- new_betas
+
+   #######
+   ## ** ^^ Important order problem??? Because of the nonlinear scaling, applying resistance first and then tolerance second,
+    ## tolerance will have a smaller effect. But tolerance doesn't affect beta, so unclear how to fix this.
+   #######
 
    ## Further adjust alpha via tolerance, which will act as a multiple to parasite intrinsic mortality rate
    state$alpha  <- get_alpha_tol(state, numcol = ncol(state$alpha), numrow = nrow(state$alpha), mut_link_h, mut_link_p)
@@ -277,9 +282,9 @@ get_alpha_tol    <- function (state, numcol, numrow, mut_link_h, mut_link_p) {
 
   mut_link_p$linkinv(
   matrix(
-      apply(mut_link_p$linkfun(state$alpha), 2, function (x) x / matrix(mut_link_h$linkinv(state$httraitvec), ncol = 1))
+      apply(mut_link_p$linkfun(state$alpha), 2, function (x) x - matrix(state$httraitvec, ncol = 1))
     , nrow = numrow
-    , ncol   = numcol
+    , ncol = numcol
   )
   )
 
@@ -316,10 +321,10 @@ return(realized_beta)
 calc_startvals   <- function (alpha0, res0, tol0, gamma0, d, R0_init, N, power_c, power_exp, mut_link_h, mut_link_p) {
 
 ## alpha only considering host resistance
-alpha_r    <- mut_link_p$linkinv(mut_link_p$linkfun(alpha0) / res0)
+alpha_r    <- mut_link_p$linkinv(mut_link_p$linkfun(alpha0) - mut_link_h$linkfun(res0))
 
 ## alpha given host resistance and tolerance
-alpha_rt   <- mut_link_p$linkinv(mut_link_p$linkfun(alpha_r) / tol0)
+alpha_rt   <- mut_link_p$linkinv(mut_link_p$linkfun(alpha_r) - mut_link_h$linkfun(tol0))
 
 ## From these alphas back calculate joint beta,
 joint_beta <- R0_init * (gamma0 + d + alpha_rt) / N
@@ -564,7 +569,7 @@ run_sim <- function(
                   print(paste(i, j, sep = "  -  "))
                   print(str(state$Svec))
                   assign("state_check", state, .GlobalEnv)
-                  if (i == 10 & j == 5) browser()  ## Fill these in manually with printed i and j
+                  if (i == 1 & j == 5) browser()  ## Fill these in manually with printed i and j
                 }
 
                 ## [Step 1]: Birth. Not accessible to death or infection until the next time step.
@@ -600,7 +605,7 @@ run_sim <- function(
                   mutated  <- rbinom_mat(n = nrow(newinf), size = newinf, prob = mu, nrow = nrow(newinf), ncol = ncol(newinf))
                }
 
-                if (debug3 == TRUE) mutated[1,1] <- 2
+                if (debug3 == TRUE) { mutated[1,1] <- 2 }
 
                 ## [Step 7]: Mutation of new hosts (during birth).
                 ## For now assume that S hosts are the only hosts reproducing -- a common assumption, unclear if it should stay.
@@ -612,7 +617,7 @@ run_sim <- function(
                 mutated_host_r <- rbinom(length(mutated_host), size = mutated_host, prob = mut_host_res_bias)
                 mutated_host_t <- mutated_host - mutated_host_r
 
-                if (debug3 == TRUE) mutated_host <- 2; mutated_host_r <- 1; mutated_host_t <- 1
+                if (debug3 == TRUE) { mutated_host <- 2; mutated_host_r <- 1; mutated_host_t <- 1 }
 
                 stopifnot(length(recover) == length(mutated))
                 stopifnot(length(newinf) == length(state$Imat))
