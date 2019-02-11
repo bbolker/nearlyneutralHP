@@ -5,6 +5,21 @@
 #######
 
 #######
+## New Cautions and notes upon returning on Feb 1
+#######
+
+### First, search *** For new changes based on updated logic
+
+## (1) Unclear that the two step evolutionary process of first evo in alpha (while holding beta proportional to its
+ ## max beta according to the tradeoff curve), followed by evo in beta is an appropriate method for modeling the evolution
+## (2) Unclear that treating birth as a probability is appropraite. This mostly arises at low pop sizes, where births are
+ ## set to balance deaths. As virulence increases deaths get high, which forces the probability to 1, removing a piece of the
+  ## stochasticity. Maybe it is ok, but I definitely need to think about it. It may be more appropriate to actually model the
+   ## number of newborns per adult...
+## (3)
+
+
+#######
 ## Cautions / General notes
 #######
 
@@ -38,7 +53,7 @@
 ## Get host and parasite mutations
 get_mut_h        <- function (state, orig_trait, mut_var, mut_mean, mut_sd, res_mut, tol_mut, mut_host_sd_shift, mut_host_mean_shift, mut_type = "shift") {
 
-    if (mut_type=="shift") {
+    if (mut_type == "shift") {
 
       ## Direction of change different for host and pathogen and different for the two parameters (beta and gamam)
 
@@ -70,7 +85,7 @@ get_mut_h        <- function (state, orig_trait, mut_var, mut_mean, mut_sd, res_
 }
 get_mut_p        <- function (orig_trait, mut_var, power_c, power_exp, mut_link_p, mut_mean, mut_sd, mut_type = "shift") {
 
-   if (mut_type=="shift") {
+   if (mut_type == "shift") {
 
      ## Parasite first evolves in alpha
         new_trait_neg <- orig_trait$neg_trait +
@@ -83,12 +98,17 @@ get_mut_p        <- function (orig_trait, mut_var, power_c, power_exp, mut_link_
       ## is the same proportional distance to its optimum on the tradeoff curve
 
      ## Find optimum possible beta with the new alpha, and determine how close original beta would be to the new optima
-        orig_beta <- power_tradeoff(alpha = mut_link_p$linkinv(orig_trait$neg_trait)
-          , c = power_c, curv = power_exp) * mut_link_p$linkinv(orig_trait$pos_trait)
+#        orig_beta <- power_tradeoff(alpha = mut_link_p$linkinv(orig_trait$neg_trait)
+#          , c = power_c, curv = power_exp) * mut_link_p$linkinv(orig_trait$pos_trait)
 
       ## Propagate a new beta to accompany the new alpha from which beta can independently evolve
-        orig_trait$pos_trait <- logit(orig_beta / power_tradeoff(alpha = mut_link_p$linkinv(new_trait_neg)
-          , c = power_c, curv = power_exp))
+#        orig_trait$pos_trait <- logit(power_tradeoff(alpha = mut_link_p$linkinv(new_trait_neg), c = power_c, curv = power_exp) *
+#            mut_link_p$linkinv(orig_trait$pos_trait))
+
+### *** (Return to code note, Feb 1) In this step whole mutation step, because of how it is set up, the intrinsic parasite beta
+ ### *** that is evolving is just how close the parasite is to its maximum beta constrained by the tradeoff curve. Thus it is able
+  ### *** to evolve independently. In the later step the intrinsic beta is translated to a new realized beta given the new location
+   ### *** on the tradeoff curve that it finds itslf on given by alpha
 
         new_trait_pos <- orig_trait$pos_trait +
             rnorm(length(orig_trait$pos_trait),
@@ -96,6 +116,9 @@ get_mut_p        <- function (orig_trait, mut_var, power_c, power_exp, mut_link_
                mut_mean
             ,  mut_mean*-1)
             , mut_sd)
+
+### *** Can also set up to not allow any update in
+#new_trait_pos <- orig_trait$pos_trait
 
         if (any(is.na(c(new_trait_pos, new_trait_neg)))) stop("??")
         return(list(new_trait_pos = new_trait_pos, new_trait_neg = new_trait_neg))
@@ -248,13 +271,14 @@ get_death_con    <- function (state, d, S) {
   if (S == TRUE) {
   deathS     <- rbinom_mat(n = length(state$Svec), size = state$Svec, prob = d, nrow = nrow(state$Svec), ncol = ncol(state$Svec))
   state$Svec <- state$Svec - deathS
+  return(list(state, deathS))
   } else {
-  deathI     <- rbinom_mat(n = length(c(state$Imat)), size = c(state$Imat), prob = d, nrow = nrow(state$Imat), ncol = ncol(state$Imat))
-  state$Imat <- state$Imat - deathI
-  deathI     <- rbinom_mat(n = length(c(state$Imat)), size = c(state$Imat), prob = c(state$alpha), nrow = nrow(state$Imat), ncol = ncol(state$Imat))
-  state$Imat <- state$Imat - deathI
+  deathI1     <- rbinom_mat(n = length(c(state$Imat)), size = c(state$Imat), prob = d, nrow = nrow(state$Imat), ncol = ncol(state$Imat))
+  state$Imat  <- state$Imat - deathI1
+  deathI2     <- rbinom_mat(n = length(c(state$Imat)), size = c(state$Imat), prob = c(state$alpha), nrow = nrow(state$Imat), ncol = ncol(state$Imat))
+  state$Imat  <- state$Imat - deathI2
+  return(list(state, deathI1, deathI2))
   }
-  state
 }
 get_death_dd     <- function (S, I, N0, d0, decay) {
   d0 * exp(-(S + I) / (N0 / decay))
@@ -268,15 +292,26 @@ get_birth_dd     <- function (state, N0, b0, decay) {
 }
 get_birth_bal    <- function (state, d) {
 
- birth_rate <- (sum(state$Imat - (state$Imat * (1 - d) * (1 - d * state$alpha))) + (sum(state$Svec) * d)) / sum(state$Svec)
+  ## Set birth rate equal to the total death rate among all infected individuals and susceptible individuals from parasite virulence and background death
+ birth_rate <- (sum(state$Imat - (state$Imat * (1 - d) * (1 - state$alpha))) + (sum(state$Svec) * d)) / sum(state$Svec)
   if (birth_rate != 0 & sum(state$Svec > 0)) {
+    if (birth_rate < 1) {
     birth <- rbinom_mat(n = length(state$Svec), size = state$Svec, prob = birth_rate, nrow = nrow(state$Svec), ncol = ncol(state$Svec))
+    } else {
+  ## If the number of deaths is bigger than the number of S, keep birth marginally stochastic by adding births equal to the difference
+   ## between death and birth, but at least double the number of S by allowing each S to reproduce
+    birth <- state$Svec * floor(birth_rate) + rbinom_mat(n = length(state$Svec), size = state$Svec, prob = (birth_rate - floor(birth_rate)), nrow = nrow(state$Svec), ncol = ncol(state$Svec))
+    }
   } else {
     birth <- matrix(rep(0, length(state$Svec)), nrow = 1)
   }
  birth
 
 }
+get_birth_det    <- function (deathS, deathI) {
+  ## Total birth per S class is the sum of the number of deaths in S and death in the I classes
+  rowSums(deathI[[3]]) + rowSums(deathI[[2]]) + deathS[[2]]
+  }
 ## Function to wrap apply into returning a matrix (problems with always needing a matrix and reducing to a vector sometimes)
 get_alpha_tol    <- function (state, numcol, numrow, mut_link_h, mut_link_p) {
 
@@ -439,6 +474,8 @@ run_sim <- function(
  , power_exp           = 2       ## Power law tradeoff exponent
  , Imat                = NULL
  , host_dyn_only       = FALSE
+ , balance_birth       = TRUE
+ , stochastic_birth    = TRUE
  , dt                  = 1
  , nt                  = 100000
  , rptfreq             = max(nt / 500, 1)
@@ -574,13 +611,21 @@ run_sim <- function(
 
                 ## [Step 1]: Birth. Not accessible to death or infection until the next time step.
 
+         #      if (i == 200 & j == 1) browser()
+
                 ## Two options currently for birth. Balancing (birth = all death) and density dependent (decreasing with N)
                  ## S and I both reproduce here currrently: can change later so that investment in res and tol changes b (or I vs S)
-               #birth      <- get_birth_bal(state, d = d0)
+              if (balance_birth == FALSE) {
                 birth      <- get_birth_dd(state, N0 = N, b0 = b, decay = b_decay)
+              } else {
+                if (stochastic_birth == TRUE) {
+                birth      <- get_birth_bal(state, d)
+                }
+              }
 
-                ## [Step 2]: Death of S.
-                state      <- get_death_con(state, d, S = TRUE)
+                ## [Step 2]: Death of S. Returning a list of updated state and death, so death can be used to calculate deterministic birth
+                deathS     <- get_death_con(state, d, S = TRUE)
+                state      <- deathS[[1]]
 
                 ## [Step 3]: Infection.
                 ## Prob of escaping infection completely
@@ -592,7 +637,13 @@ run_sim <- function(
 
                 ## [Step 4]: Death of I.
                 ## Natural death + parasite induced death
-                state      <- get_death_con(state, d, S = FALSE)
+                deathI     <- get_death_con(state, d, S = FALSE)
+                state      <- deathI[[1]]
+
+                ## Deterministic birth
+                if (balance_birth == TRUE & stochastic_birth == FALSE) {
+                birth      <- get_birth_det(deathS, deathI)
+                }
 
                 ## [Step 5]: Recovery of I. ##
                 recover    <- rbinom_mat(n = length(c(state$Imat)), size = c(state$Imat), prob = c(state$gamma), nrow = nrow(state$Imat), ncol = ncol(state$Imat))
@@ -611,16 +662,17 @@ run_sim <- function(
                 ## For now assume that S hosts are the only hosts reproducing -- a common assumption, unclear if it should stay.
                  ## Probably not when costs of resistance and tolerance are included
                 mutated_host <- rbinom(length(birth), size = birth, prob = mu/mut_host_mu_shift)
-                birth        <- birth - mutated_host
-
                 ## Of the mutated hosts sort into resistance and tolerance mutants
                 mutated_host_r <- rbinom(length(mutated_host), size = mutated_host, prob = mut_host_res_bias)
                 mutated_host_t <- mutated_host - mutated_host_r
 
-                if (debug3 == TRUE) { mutated_host <- 2; mutated_host_r <- 1; mutated_host_t <- 1 }
+                if (debug3 == TRUE) { mutated_host[1] <- 2; mutated_host_r[1] <- 1; mutated_host_t[1] <- 1 }
 
                 stopifnot(length(recover) == length(mutated))
-                stopifnot(length(newinf) == length(state$Imat))
+                stopifnot(length(newinf)  == length(state$Imat))
+
+                ## Updated birth from
+                birth      <- birth - mutated_host
 
                 ## [Step 8]: Update Infecteds.
                 state$Imat <- state$Imat - recover + newinf - mutated
@@ -656,6 +708,10 @@ run_sim <- function(
                 }
 
                 ## Host mutations
+                if (length(which(is.na(mutated_host)) > 0)) {
+                browser()
+                }
+
                 if (sum(mutated_host) > 0) {
                     state <- do_mut(
                       state
