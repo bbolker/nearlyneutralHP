@@ -72,7 +72,8 @@ get_mut_h        <- function (state, orig_trait, mut_var, mut_mean, mut_sd, res_
          new_trait_t <- orig_trait$tol_mut +
             rnorm(length(orig_trait$tol_mut)
             , ifelse(mut_var == "beta"
-              , mut_mean/mut_host_mean_shift
+#              , mut_mean/mut_host_mean_shift
+              , 0
               , mut_mean*-1/mut_host_mean_shift)
             , mut_sd/mut_host_sd_shift)  ## allow the sd for the host to be a multiple of the sd for the pathogen (1 for equal)
 
@@ -83,13 +84,16 @@ get_mut_h        <- function (state, orig_trait, mut_var, mut_mean, mut_sd, res_
         return(list(res_trait = new_trait_r, tol_trait = new_trait_t))
     } else stop("unknown mut_type")
 }
-get_mut_p        <- function (orig_trait, mut_var, power_c, power_exp, mut_link_p, mut_mean, mut_sd, mut_type = "shift") {
+get_mut_p        <- function (orig_trait, mut_var, power_c, power_exp, mut_link_p, mut_mean, mut_sd, mut_type = "shift", agg_eff_adjust) {
 
    if (mut_type == "shift") {
 
      ## Parasite first evolves in alpha
-        new_trait_neg <- orig_trait$neg_trait +
-            rnorm(length(orig_trait$neg_trait), mut_mean*-1, mut_sd) ## Parasites evolve to increase mortality rate
+    #   new_trait_neg <- orig_trait$neg_trait + rnorm(length(orig_trait$neg_trait), mut_mean*-1, mut_sd) ## Parasites evolve to increase mortality rate
+
+      ## Assume a neutrally evolving aggressiveness
+       neg_trait_adj <- rnorm(length(orig_trait$neg_trait), 0, mut_sd)
+       new_trait_neg <- orig_trait$neg_trait + neg_trait_adj
 
      ## but evolving in alpha necessarily changes what parasite intrinsic beta means, because parasite intrinsic beta
       ## is how close a parasite is to maximizing beta at the current alpha.
@@ -110,12 +114,36 @@ get_mut_p        <- function (orig_trait, mut_var, power_c, power_exp, mut_link_
   ### *** to evolve independently. In the later step the intrinsic beta is translated to a new realized beta given the new location
    ### *** on the tradeoff curve that it finds itslf on given by alpha
 
-        new_trait_pos <- orig_trait$pos_trait +
+   ## if an increase in parasite aggressiveness leads to a decrease in parasite efficiency, first adjust
+    ## efficiency according to how much aggressiveness changed
+       if (agg_eff_adjust == TRUE) {
+
+  #### ******
+    ## Does the order of these two things matter? Is something about getting this first adjustment impacting how
+      ## the biased mutation is realized in the second step?
+
+      new_trait_pos <- orig_trait$pos_trait - neg_trait_adj
+
+          ## Assume a negatively evolving efficiency
+        new_trait_pos <- new_trait_pos +
+            rnorm(length(new_trait_pos),
+              ifelse(mut_var == "beta",  ## Beta and gamma in opposite directions
+               mut_mean
+            ,  mut_mean*-1)
+            , mut_sd
+     #       , 0
+              )
+
+       } else {
+
+         new_trait_pos <- orig_trait$pos_trait +
             rnorm(length(orig_trait$pos_trait),
               ifelse(mut_var == "beta",  ## Beta and gamma in opposite directions
                mut_mean
             ,  mut_mean*-1)
             , mut_sd)
+
+       }
 
 ### *** Can also set up to not allow any update in
 #new_trait_pos <- orig_trait$pos_trait
@@ -370,7 +398,9 @@ needed_c   <- pt_calc_c(alpha = alpha_r, beta = joint_beta, curv = power_exp)
 ## then beta without the effects of host genotype
 beta_p     <- power_tradeoff(alpha = alpha0, c = needed_c, curv = power_exp)
 
-## then parasite intrinsic beta (proportion of optimal beta | alpha)
+## then parasite intrinsic beta (proportion of optimal beta | alpha). Intrinsic beta is efficiency, however
+ ## I decide to calculate it. If parasite tuning is introduced, then efficiency is defined by the matching
+  ## of parasite
 intr_beta  <- mut_link_p$linkfun(beta_p / power_tradeoff(alpha = alpha0, c = power_c, curv = power_exp))
 
 return(list(
@@ -484,6 +514,10 @@ run_sim <- function(
  , debug               = FALSE
  , debug2              = FALSE
  , debug3              = FALSE
+ , host_evo_delay      = FALSE
+ , host_evo_delay_start= NULL
+ , host_evo_delay_stop = NULL
+ , agg_eff_adjust      = FALSE
  , useCpp              = FALSE) {
 
     if (round(N)!=N) {
@@ -535,7 +569,6 @@ run_sim <- function(
       ## starting parasite mortality rate, irrespective of the host trait. That parameter is back transformed
        ## to the intrinsic parasite scale and used to calculate a true starting alpha (also called alpha0 here
         ## that is based on both parasite and host triats)
-
     startvals  <- calc_startvals(alpha0, res0, tol0, gamma0, d, R0_init, N, power_c, power_exp, mut_link_h, mut_link_p)
     beta0      <- startvals$joint_beta
     ltraitvec  <- startvals$intrinsic_beta
@@ -576,7 +609,7 @@ run_sim <- function(
 
      ## Added tracking host responses
     res <- as.data.frame(matrix(
-      NA, nrow = nrpt, ncol = 15
+      NA, nrow = nrpt, ncol = 19
     , dimnames = list(
       NULL
     , c("time"
@@ -589,6 +622,10 @@ run_sim <- function(
       , paste0(c("mean_hl", "sd_hl"), "tol")
       , paste0(c("mean_pl", "sd_pl"), mut_var)
       , paste0(c("mean_pl", "sd_pl"), "alpha")
+      , "mean_alpha"
+      , "sd_alpha"
+      , "mean_beta"
+      , "sd_beta"
       , ifelse(mut_var == "beta", "gamma", "beta")  ##** list the non-evolving param
       ))))
 
@@ -596,6 +633,15 @@ run_sim <- function(
 
     for (i in 1:nrpt) {
         ## cat("time ",i,"\n")
+
+      if (host_evo_delay == TRUE & i == host_evo_delay_start) {
+      mut_host_mu_shift <- 10
+      }
+
+      if (host_evo_delay == TRUE & i >= host_evo_delay_stop) {
+      state$httraitvec <- state$httraitvec / 1.05
+      mut_host_mu_shift <- 1000000000
+      }
 
             for (j in 1:rptfreq) {
                 ## cat("betavec:",betavec,"\n")
@@ -696,15 +742,16 @@ run_sim <- function(
                 if (tot_mut > 0) {
                     state <- do_mut(
                       state
-                    , mut_var     = mut_var
-                    , orig_trait  = orig_trait  ## ^^Just care about intrinsic nature of a strain
-                    , mut_mean    = mut_mean
-                    , mut_sd      = mut_sd
-                    , mut_host    = FALSE
-                    , mut_type    = mut_type
-                    , power_c     = power_c
-                    , power_exp   = power_exp
-                    , mut_link_p  = mut_link_p)
+                    , mut_var        = mut_var
+                    , orig_trait     = orig_trait  ## ^^Just care about intrinsic nature of a strain
+                    , mut_mean       = mut_mean
+                    , mut_sd         = mut_sd
+                    , mut_host       = FALSE
+                    , mut_type       = mut_type
+                    , power_c        = power_c
+                    , power_exp      = power_exp
+                    , mut_link_p     = mut_link_p
+                    , agg_eff_adjust = agg_eff_adjust)
                 }
 
                 ## Host mutations
@@ -783,6 +830,12 @@ run_sim <- function(
         lhtol_sd     <- sqrt(sum(state$Svec*(state$httraitvec-lhtol_mean)^2)/num_S)
         pop_size     <- num_I + num_S
 
+        ## actual alpha and beta of all parasites in all host classes
+        avg_alpha    <- mean(state$alpha)
+        sd_alpha     <- mean(state$alpha)
+        avg_beta     <- mean(state$beta)
+        sd_beta      <- mean(state$beta)
+
         if (progress) cat(".")
         res[i,] <- c(
           i*rptfreq
@@ -799,6 +852,10 @@ run_sim <- function(
         , ltrait_sd
         , lalpha_mean
         , lalpha_sd
+        , avg_alpha
+        , sd_alpha
+        , avg_beta
+        , sd_beta
         , ifelse(mut_var == "beta", state$gamma[1,1], state$gamma[1,1]))
 
         ## DRY ...
