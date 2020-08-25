@@ -1,35 +1,62 @@
 ## going to model logit-beta, for now (lbeta)
 ## can easily switch to another scale
 
+#######
+## MK: search ** for new additions:
+## 1) Gamma change sign of mutation mean and link scale
+## 2) Host evolution in an extremely naive way (no tracking of host type, so always assume selective sweep,
+## which is really weird for disadvantageous mutations: hence option "advantageous" below). Nonetheless, a place to begin
+##      Note: I decided to start all host parameters with mut_host_ (this could be changed to reduce length of names)
+#######
+
 #' @useDynLib pevosim
 #' @importFrom Rcpp evalCpp
-## params
-## N: population size
-## mu: per-infection mutation probability
-## gamma: recovery rate
-## lbeta0: beta of initial
-get_mut <- function(orig_trait,
-                    mut_mean,mut_sd,mut_type="shift") {
+#' @param N population size
+#' @param mu per-infection mutation probability
+#' @param gamma recovery rate
+#' @param lbeta0 initial beta
+get_mut <- function(orig_trait,mut_var,mut_mean,mut_sd,mut_host,mut_host_type,mut_host_sd_shift,mut_type="shift") {
     if (mut_type=="shift") {
-        new_trait <- orig_trait+
-            rnorm(length(orig_trait),mut_mean,mut_sd)
+      ## **direction of change different for host and pathogen and different for the two parameters (beta and gamam)
+        new_trait <- orig_trait +
+            rnorm(length(orig_trait),
+              ifelse(mut_var == "beta",                           ## if beta is evolving:
+              ifelse(mut_host == FALSE, mut_mean, mut_mean*-1),   ## in the pathogen: mut_mean is negative; in host change positive to keep disadvantageous mutations common
+              ifelse(mut_host == FALSE, mut_mean*-1, mut_mean)),  ## if gamma is evolving in the pathogen mut_mean is negative; in host positive
+              ifelse(mut_host == FALSE, mut_sd, mut_sd/mut_host_sd_shift)) ## allow the sd for the host to be a multiple of the sd for the pathogen (1 for equal)
+        ## **if only advantageous mutations are propagated (not neutral...)
+        if (mut_host == TRUE & mut_host_type == "advantageous") {
+        ## ** retain the minimum of the new and original trait
+        ## ** Doing it this way assumes that a host has the opportunity to counter-evolve to each strain (maybe realistic maybe not depending)
+        ## ** on the assumed mechanics. Alternatively could assume a single adaptation that is equivalent to all strains
+        new_trait <- pmin(new_trait, orig_trait)
+        }
         if (any(is.na(new_trait))) stop("??")
         return(new_trait)
     } else stop("unknown mut_type")
 }
 
-do_mut <- function(state,mut_var,mut_link,orig_trait,...) {
-    new_trait <- get_mut(orig_trait,...)
+do_mut <- function(state,mut_var,mut_link,mut_host,orig_trait,...) {
+    ## **If the mutation is in the parasite
+    if (mut_host == FALSE) {
+    new_trait        <- get_mut(orig_trait,mut_var,mut_host,...)
     state[[mut_var]] <- c(state[[mut_var]],mut_link$linkinv(new_trait))
-    state$ltraitvec <- c(state$ltraitvec,new_trait)
-    state$Ivec <- c(state$Ivec,rep(1,length(orig_trait)))
+    state$ltraitvec  <- c(state$ltraitvec,new_trait)
+    state$Ivec       <- c(state$Ivec,rep(1,length(orig_trait)))
+    } else {
+    ##** Else if the mutation is in the host (some adjustments to how state gets updated when the host is evolving)
+    new_trait        <- get_mut(orig_trait,mut_var,mut_host,...)
+    state[[mut_var]] <- mut_link$linkinv(new_trait)
+    state$ltraitvec  <- new_trait
+    ##** No change to I
+    }
     return(state)
 }
 
 do_extinct <- function(state,mut_var,extinct) {
     state[[mut_var]] <- state[[mut_var]][-extinct]
-    state$ltraitvec <- state$ltraitvec[-extinct]
-    state$Ivec <- state$Ivec[-extinct]
+    state$ltraitvec  <- state$ltraitvec[-extinct]
+    state$Ivec       <- state$Ivec[-extinct]
     return(state)
 }
 
@@ -48,12 +75,12 @@ multlogit <- function(minval=0,maxval=1,scale=1) {
     valideta <- function(eta) TRUE
     ## need to be able to find C_logit_mu_eta ...
     ## environment(linkfun) <- environment(linkinv) <- environment(mu.eta) <- environment(valideta) <- asNamespace("stats")
-    structure(list(linkfun = linkfun, linkinv = linkinv, mu.eta = mu.eta, 
+    structure(list(linkfun = linkfun, linkinv = linkinv, mu.eta = mu.eta,
                    valideta = valideta, name = "multlogit"), class = "link-glm")
 }
 
 #' Evolutionary simulations
-#' 
+#'
 #' @param R0_init starting value of R0
 #' @param gamma0 recovery rate
 #' @param gamma_max  ?? not used ??
@@ -63,6 +90,14 @@ multlogit <- function(minval=0,maxval=1,scale=1) {
 #' @param mut_sd mutational standard deviations
 #' @param mut_var which variable(s) mutate?
 #' @param mut_link link function for mutation
+#' @param mut_host **mutate the host as well (only on if mutation in gamma)
+#' @param mut_host_type **neutral (all hosts replaced by the mutant that arises) or advantageous (only advantageous host mutations spread): either way the
+#' dyanmics are one of selective sweeps
+#' @param mut_host_prob **treat host mutation as a per time step probability?
+#' @param mut_host_freq **If not, frequency that hosts mutate (set number of time steps (e.g. generation time or something like that)
+#' @param mut_host_sd_shift **Host multiple of parasite sd
+#' @param mut_host_mean_shift **Host multiple of parasite mean (not set up yet)
+#' @param mut_host_mu_shift **Host multiple of parasite mean (not set up yet). On the wrong scale (muliple on prob scale) but ok for now because of tiny prob....
 #' @param Ivec initial vector of infected numbers
 #' @param mu mutation probability per replication
 #' @param discrete (logical) run discrete-time sim?
@@ -72,12 +107,13 @@ multlogit <- function(minval=0,maxval=1,scale=1) {
 #' @param rptfreq reporting frequency (should divide nt)
 #' @param progress draw progress bar?
 #' @param debug (logical) debugging output?
+#' @param debug2 **(logical) print gamma as the sim runs?
 #' @param useCpp (logical) use C++ code for continuous-time models?
 #' @importFrom stats make.link rnorm rbinom rmultinom rexp runif
 #' @export
 run_sim <- function(R0_init=2,  ## >1
-                    gamma0 =1/5,  ## >0
-                    gamma_max = Inf,
+                    gamma0=1/5,  ## >0
+                    gamma_max=Inf,
                     N=1000,     ## integer >0
                     mu=0.01,    ## >0
                     mut_type="shift",
@@ -85,6 +121,14 @@ run_sim <- function(R0_init=2,  ## >1
                     mut_sd=0.5, ## >0
                     mut_var="beta",
                     mut_link=NULL,
+                    mut_host=FALSE,
+                    mut_host_type="neutral", ## **all host adaptations take over the pop (option: neutral) or only advantageous (option: advantageous)
+                                             ## **could more cleanly use TRUE/FALSE here, but wanted to leave options open for other alternatives
+                    mut_host_prob=TRUE,
+                    mut_host_freq="prob",
+                    mut_host_sd_shift=1,     ## **1 for identical sd to the parasite (mean assumed to be the same)
+                 #  mut_host_mean_shift=1,   ## **1 for identical sd to the parasite (mean assumed to be the same); not included yet
+                    mut_host_mu_shift=1,
                     Ivec=NULL,
                     dt=1,
                     nt=100000,
@@ -93,6 +137,7 @@ run_sim <- function(R0_init=2,  ## >1
                     seed=NULL,
                     progress=FALSE,
                     debug=FALSE,
+                    debug2=FALSE,
                     useCpp=FALSE) {
 
     if (round(N)!=N) {
@@ -142,7 +187,9 @@ run_sim <- function(R0_init=2,  ## >1
         }
         ltraitvec <- mut_link$linkfun(beta0)
     } else {
-        if (is.null(mut_link)) mut_link <- make.link("log")
+      ## **Positive with log link can push gamma overboard when mutation in gamma is on average disadvantageous.
+      ## **Made to logit link for now, not sure...
+        if (is.null(mut_link)) mut_link <- make.link("logit") #mut_link <- make.link("log")
         ltraitvec <- mut_link$linkfun(gamma0)
     }
     ## parameters structure (parallel vectors), so these can
@@ -152,18 +199,26 @@ run_sim <- function(R0_init=2,  ## >1
                   S=S)
 
     dfun("init")
-    
+
     nrpt <- nt %/% rptfreq
     ## not used: intended for accumulating information about a binned
     ##  distribution over time
     ## nq <- 9
     ## qvec <- seq(0,1,length=nq+2)[-c(1,nq+2)]
-    res <- as.data.frame(matrix(NA,nrow=nrpt,ncol=5,
-                                dimnames=list(NULL,c("time","S","I",
-                                                     paste0(c("mean_l","sd_l"),mut_var)))))
+    ## **decided I wanted to track more stuff
+    res <- as.data.frame(matrix(NA,nrow=nrpt,ncol=8,
+                                dimnames=list(
+                                    NULL
+                                  , c(
+                                      "time"
+                                    , "S"
+                                    , "I"
+                                    , paste0(c("mean_l", "sd_l"), mut_var)
+                                    , "num_strains"
+                                    , ifelse(mut_var == "beta", "gamma", "beta") ##** list the non-evolving param
+                                    , "pop_size"))))
 
     t_tot <- 0  ## for continuous model
-
 
     for (i in 1:nrpt) {
         ## cat("time ",i,"\n")
@@ -183,6 +238,25 @@ run_sim <- function(R0_init=2,  ## >1
                                   size=state$Ivec,prob=state$gamma)
                 ## fraction of new infections -> mutation
                 mutated <- rbinom(length(newinf),size=newinf,prob=mu)
+
+                ## **new host mutation, arising every time step with a given prob ("prob") or after X generations (a numeric value)
+                if (mut_host_freq == "prob") {
+                ## **assume probability of host mutation to be some factor of parasite mutation
+                mutated_host <- rbinom(N,1,prob=mu/mut_host_mu_shift)
+                ## **because host types aren't being tracked, for now just track if any mutations arise or not
+                ## **was thinking about taking X number of mutations and choosing most advantageous from them but that seems to be a
+                ## **very half-assed improvement. So just mechanics for now, worry about this stuff when the model changes
+                mutated_host <- ifelse(sum(mutated_host) > 0, 1, 0)
+                } else if (class(mut_host_freq) == "numeric") {
+                ## **check if host reproduction has occurred. Prior to setting up different classes of hosts, this assumes instantaneous selective sweep
+                  ## **which is pretty rediculuous, but a starting place
+                if ((i / mut_host_freq) %% 1 == 0) {
+                mutated_host <- 1
+                } else {
+                mutated_host <- 0
+                }
+                }
+
                 stopifnot(length(recover)==length(mutated))
                 stopifnot(length(newinf)==length(state$Ivec))
                 ## update infectives
@@ -192,17 +266,36 @@ run_sim <- function(R0_init=2,  ## >1
                 ## "\n")
                 dfun("before mutation")
                 if (debug) print(mutated)
-                
+
                 ## now do mutation ...
                 tot_mut <- sum(mutated)
+                ## **mut parasite first. Another choice of order that may matter (especically if the model gets more complicated)
                 if (tot_mut>0) {
-                    state <- do_mut(state,mut_var,
+                    state <- do_mut(state,
+                                    mut_var=mut_var,
                                     mut_link,
                                     orig_trait=rep(state$ltraitvec,mutated),
                                     mut_mean=mut_mean,
                                     mut_sd=mut_sd,
+                                    mut_host=FALSE,
+                                    mut_host_type=mut_host_type,
+                                    mut_host_sd_shift=mut_host_sd_shift,
                                     mut_type=mut_type)
                 }
+                    ## **host mutation if there was one
+                    if (mut_host == TRUE & mutated_host == 1) {
+                    state <- do_mut(state,
+                                    mut_var=mut_var,
+                                    mut_link,
+                                    orig_trait=rep(state$ltraitvec,1),
+                                    mut_mean=mut_mean,
+                                    mut_sd=mut_sd,
+                                    mut_host=TRUE,
+                                    mut_host_type=mut_host_type,
+                                    mut_host_sd_shift=mut_host_sd_shift,
+                                    mut_type=mut_type)
+                    }
+
                 if (all(state$Ivec==0)) {
                     message(sprintf("system went extinct prematurely (t=%d)",i))
                     break
@@ -217,6 +310,12 @@ run_sim <- function(R0_init=2,  ## >1
                 }
                 stopifnot(length(state$S)==1)
                 stopifnot(sum(state$Ivec)+state$S == N)
+
+                ##** check progress of evolution
+                if (debug2 == TRUE) {
+                print(paste(j, state$gamma, sep = "  "))
+                }
+
             }  ## rptfreq time steps
         } else  ## end discrete case
         {
@@ -269,19 +368,21 @@ run_sim <- function(R0_init=2,  ## >1
         I_tot <- sum(state$Ivec)
         ltrait_mean <- sum(state$Ivec*state$ltraitvec)/I_tot
         ltrait_sd <- sqrt(sum(state$Ivec*(state$ltraitvec-ltrait_mean)^2)/I_tot)
+        ## **Decided I wanted to track some more stuff
+        num_strains <- length(state$Ivec)
         if (progress) cat(".")
-        res[i,] <- c(i*rptfreq,state$S,I_tot,ltrait_mean,ltrait_sd)
+        res[i,] <- c(i*rptfreq,state$S,I_tot,ltrait_mean,ltrait_sd,num_strains,
+          ifelse(mut_var == "beta", state$gamma, state$beta),sum(state$S, state$I))
         ## DRY ...
         if (all(state$Ivec==0)) {
             message(sprintf("system went extinct prematurely (t=%d)",i))
             break
         }
     } ## loop over reporting frequencies
-    if (progress) cat("\n")                      
+    if (progress) cat("\n")
     attr(res,"mut_link") <- mut_link
     return(res)
 }
-
 
 #' Get rates
 #' @param state list of state vectors
